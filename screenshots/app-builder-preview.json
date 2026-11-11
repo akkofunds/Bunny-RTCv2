@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Bunny RTC",
+      "hasCanvas": false,
+      "bodyTextLen": 186,
+      "bodyTextHash": "8c2ae128994295dd7b1583b08e204072e14bd1d4dc497c438eaec144713a976f",
+      "bodyTextPrefix": "Bunny RTC One shared room Find Invite Connecting…Retry Welcome t",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Bunny RTC",
+      "hasCanvas": false,
+      "bodyTextLen": 171,
+      "bodyTextHash": "c3de9e842602cd134304f92650d099a20cf3b8819e928a98c67384eb1539970b",
+      "bodyTextPrefix": "Bunny RTC One shared room 1 here · Live Welcome to Bunny RTC Eve",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}

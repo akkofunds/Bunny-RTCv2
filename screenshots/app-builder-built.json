@@ -1,0 +1,40 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Bunny RTC",
+      "hasCanvas": false,
+      "bodyTextLen": 186,
+      "bodyTextHash": "bccb79a9886b5c7a4f992b4bd9ff0119359a519374aebb382561a8baaeb9f0ab",
+      "bodyTextPrefix": "Bunny RTC One shared room Find Invite Connecting…Retry Welcome t",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Bunny RTC",
+      "hasCanvas": false,
+      "bodyTextLen": 174,
+      "bodyTextHash": "4b91996e0e9e95b9734ace992b1633779ed1985a5638c5b1f9bd65e62003c394",
+      "bodyTextPrefix": "Bunny RTC One shared room Connecting…Retry Welcome to Bunny RTC ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": true,
+  "baselineReasons": [
+    "mobile: body text replaced (similar length, page start changed)"
+  ]
+}
