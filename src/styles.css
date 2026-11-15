@@ -42,11 +42,14 @@
 .stage {
   --accent: #2ee6c7;
   --accent-ink: #05231d;
-  --glass-blur: 18px;
-  --glass-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04) 42%, rgba(255, 255, 255, 0.08));
-  --glass-soft-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.025) 45%, rgba(255, 255, 255, 0.06));
-  --glass-panel-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.035) 40%, rgba(10, 16, 22, 0.12));
-  --panel-blur: 22px;
+  --glass-blur: 5px;
+  --glass-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 42%, rgba(255, 255, 255, 0.06));
+  --glass-soft-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 45%, rgba(255, 255, 255, 0.05));
+  --glass-panel-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.01) 40%, rgba(6, 10, 14, 0.1));
+  --panel-blur: 2px;
+  --float-blur: 14px;
+  --float-bg: linear-gradient(155deg, rgba(60, 72, 80, 0.5), rgba(18, 24, 30, 0.5) 50%, rgba(30, 38, 44, 0.48));
+  --legible: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 10px rgba(0, 0, 0, 0.35);
   --fs: 0.98rem;
   --dim: 0.18;
   position: relative;
@@ -57,18 +60,19 @@
   font-size: var(--fs);
 }
 .stage[data-glass="frosted"] {
-  --glass-blur: 34px;
+  --glass-blur: 16px;
   --glass-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.09) 42%, rgba(255, 255, 255, 0.14));
   --glass-soft-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.07) 45%, rgba(255, 255, 255, 0.11));
   --glass-panel-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08) 45%, rgba(20, 28, 34, 0.2));
-  --panel-blur: 40px;
+  --panel-blur: 18px;
 }
 .stage[data-glass="tinted"] {
-  --glass-blur: 24px;
+  --glass-blur: 12px;
   --glass-bg: linear-gradient(155deg, rgba(20, 28, 36, 0.62), rgba(10, 14, 20, 0.5) 42%, rgba(18, 24, 30, 0.58));
   --glass-soft-bg: linear-gradient(160deg, rgba(20, 28, 36, 0.58), rgba(10, 14, 20, 0.46));
   --glass-panel-bg: linear-gradient(170deg, rgba(10, 14, 20, 0.6), rgba(8, 12, 16, 0.5));
-  --panel-blur: 30px;
+  --panel-blur: 14px;
+  --legible: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .stage[data-size="sm"] {
   --fs: 0.9rem;
@@ -133,8 +137,27 @@
 }
 .lg-panel {
   background: var(--glass-panel-bg);
-  backdrop-filter: blur(var(--panel-blur)) saturate(165%) brightness(0.92);
-  -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(165%) brightness(0.92);
+  backdrop-filter: blur(var(--panel-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(150%);
+  text-shadow: var(--legible);
+}
+/* floating surfaces (menus, sheets, dialogs) keep a light frost so text stays readable */
+.menu.lg,
+.sheet.lg,
+.modal.lg,
+.picker.lg,
+.toast.lg,
+.row-actions.lg-soft {
+  background: var(--float-bg);
+  backdrop-filter: blur(var(--float-blur)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--float-blur)) saturate(170%);
+}
+.brand,
+.tools,
+.dockbar,
+.announce,
+.composer {
+  text-shadow: var(--legible);
 }
 /* refractive rim: brighter on the lit corners, clear in the middle */
 .lg::before,
@@ -670,7 +693,7 @@
   line-height: 1.47;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  text-shadow: var(--legible);
 }
 .rt-link {
   color: var(--accent);
@@ -1845,4 +1868,10 @@ input[type="range"] {
   .bubble {
     max-width: 85%;
   }
+}
+
+.gate-card.lg {
+  backdrop-filter: blur(10px) saturate(170%);
+  -webkit-backdrop-filter: blur(10px) saturate(170%);
+  text-shadow: var(--legible);
 }

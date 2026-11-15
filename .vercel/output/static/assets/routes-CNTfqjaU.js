@@ -1,0 +1,1 @@
+import{t as e}from"./room-DzyD4v8C.js";import{r as t}from"./index-Cm_y7r0-.js";var n=t(),r=()=>(0,n.jsx)(e,{mode:`user`});export{r as component};

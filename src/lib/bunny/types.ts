@@ -139,7 +139,12 @@ export const ACCENTS: Record<string, { label: string; color: string; ink: string
   lime: { label: "Lime", color: "#a3e635", ink: "#1a2604" },
 };
 
-export const COLORS = ["#149c86", "#0ea5e9", "#d97706", "#e11d48", "#65a30d", "#ea580c", "#0891b2", "#8b5cf6"];
+export const COLORS = [
+  "#149c86", "#0ea5e9", "#d97706", "#e11d48", "#65a30d", "#ea580c",
+  "#0891b2", "#8b5cf6", "#db2777", "#4f46e5", "#ca8a04", "#059669",
+];
+
+export const randomColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
 
 export const PRESETS: Record<string, { label: string; css: string }> = {
   aurora: {

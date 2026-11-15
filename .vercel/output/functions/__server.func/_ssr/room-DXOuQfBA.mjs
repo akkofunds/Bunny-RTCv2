@@ -1,7 +1,7 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { b as require_jsx_runtime, q as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
 import { A as Image$1, B as Ban, C as Megaphone, F as CornerUpLeft, I as Copy, L as Clock, M as Eye, N as EyeOff, O as KeyRound, P as Ellipsis, R as Check, S as MessageCircle, T as Lock, U as ArrowLeft, V as AtSign, W as ArrowDown, _ as RotateCcw, a as UserPlus, b as Palette, c as Trash2, d as ShieldCheck, f as ShieldAlert, g as ScrollText, h as Search, i as UserX, j as Hash, k as Inbox, l as Smile, m as Send, n as Users, o as UserMinus, p as Settings, r as User, s as TriangleAlert, t as X, u as Shield, v as Pencil, w as LogIn, x as MessagesSquare, z as Bell } from "../_libs/lucide-react.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/room-pPPxBY_M.js
+//#region node_modules/.nitro/vite/services/ssr/assets/room-DXOuQfBA.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 /** Public halves of the admin root keys. Safe to ship: they verify, they can't sign. */
@@ -383,8 +383,13 @@ var COLORS = [
 	"#65a30d",
 	"#ea580c",
 	"#0891b2",
-	"#8b5cf6"
+	"#8b5cf6",
+	"#db2777",
+	"#4f46e5",
+	"#ca8a04",
+	"#059669"
 ];
+var randomColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
 var PRESETS = {
 	aurora: {
 		label: "Aurora",
@@ -782,7 +787,9 @@ function useBunny(mode) {
 			const name = cleanName(localStorage.getItem("bunny_name") || "") || `Guest-${me.id.slice(0, 4)}`;
 			const avatar = safeAvatar(localStorage.getItem("bunny_avatar") || void 0);
 			const bio = (localStorage.getItem("bunny_bio") || "").slice(0, 80);
-			const color = safeColor(localStorage.getItem("bunny_color"), me.id);
+			const storedColor = localStorage.getItem("bunny_color");
+			const color = storedColor && /^#[0-9a-fA-F]{6}$/.test(storedColor) ? storedColor : randomColor();
+			localStorage.setItem("bunny_color", color);
 			const stored = ls.get("bunny_settings", {});
 			const legacySound = localStorage.getItem("bunny_sound");
 			const nextSettings = {
@@ -1964,35 +1971,17 @@ function useBunny(mode) {
 		setAnnouncement
 	};
 }
-function BunnyMark({ className }) {
-	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", {
+/** The platform mark: a rounded five-point star. */
+function StarMark({ className }) {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", {
 		viewBox: "0 0 24 24",
 		className,
-		fill: "none",
+		fill: "currentColor",
 		stroke: "currentColor",
-		strokeWidth: "1.8",
-		strokeLinecap: "round",
+		strokeWidth: "1.2",
 		strokeLinejoin: "round",
 		"aria-hidden": true,
-		children: [
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M8 10c0-4 1.2-7 2.2-7 .6 2.2.4 4.2-.2 6" }),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M16 10c0-4-1.2-7-2.2-7-.6 2.2-.4 4.2.2 6" }),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M7 13.5a5 5 0 0 0 10 0c0-2.2-1.4-3.5-5-3.5s-5 1.3-5 3.5z" }),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", {
-				cx: "10",
-				cy: "13",
-				r: ".7",
-				fill: "currentColor",
-				stroke: "none"
-			}),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", {
-				cx: "14",
-				cy: "13",
-				r: ".7",
-				fill: "currentColor",
-				stroke: "none"
-			})
-		]
+		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M12 2.8l2.75 5.6 6.15.9-4.45 4.33 1.05 6.12L12 16.86 6.5 19.75l1.05-6.12L3.1 9.3l6.15-.9z" })
 	});
 }
 function Face({ avatar, color, label, status, size }) {
@@ -2010,7 +1999,7 @@ function Face({ avatar, color, label, status, size }) {
 		children: [avatar ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
 			src: avatar,
 			alt: ""
-		}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BunnyMark, {}), status ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {
+		}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StarMark, {}), status ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {
 			className: `dot ${status}`,
 			"aria-hidden": true
 		}) : null]
@@ -2175,7 +2164,7 @@ var QUICK = [
 	"❤️",
 	"👍",
 	"👀",
-	"🐰"
+	"⭐"
 ];
 var EMOJIS = [
 	"😀",
@@ -2239,7 +2228,7 @@ var EMOJIS = [
 	"🖤",
 	"🤍",
 	"💔",
-	"🐰",
+	"🌟",
 	"🌙",
 	"☀️",
 	"🌈",
@@ -3794,7 +3783,7 @@ function ProfileSection({ bunny }) {
 					className: "opt stack",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 						className: "label",
-						children: "Bunny color"
+						children: "Avatar color"
 					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 						className: "swatches",
 						children: COLORS.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
@@ -3954,7 +3943,7 @@ function NotificationSection({ bunny }) {
 			type: "button",
 			onClick: () => {
 				if (supported && Notification.permission === "granted" && s.desktop) new Notification("Bunny RTC", {
-					body: "Notifications are working 🐰",
+					body: "Notifications are working ⭐",
 					icon: "/favicon.svg"
 				});
 				else bunny.say("Turn on desktop notifications first");
@@ -4676,7 +4665,7 @@ function Room({ mode = "user" }) {
 								className: "brand lg",
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 									className: "mark",
-									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BunnyMark, { className: "size-5" })
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StarMark, { className: "size-5" })
 								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h1", { children: ["Bunny RTC", mode === "admin" ? " · Admin" : ""] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { className: `live-dot ${bunny.online ? "on" : ""}` }), bunny.online ? `${bunny.people.length} online` : bunny.status] })] })]
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("nav", {

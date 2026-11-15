@@ -24,6 +24,7 @@ import {
   T,
   cleanName,
   colorFor,
+  randomColor,
   ls,
   safeAvatar,
   safeColor,
@@ -156,7 +157,9 @@ export function useBunny(mode: "user" | "admin") {
       const name = cleanName(localStorage.getItem("bunny_name") || "") || `Guest-${me.id.slice(0, 4)}`;
       const avatar = safeAvatar(localStorage.getItem("bunny_avatar") || undefined);
       const bio = (localStorage.getItem("bunny_bio") || "").slice(0, 80);
-      const color = safeColor(localStorage.getItem("bunny_color"), me.id);
+      const storedColor = localStorage.getItem("bunny_color");
+      const color = storedColor && /^#[0-9a-fA-F]{6}$/.test(storedColor) ? storedColor : randomColor();
+      localStorage.setItem("bunny_color", color);
       const stored = ls.get<Partial<Settings>>("bunny_settings", {});
       const legacySound = localStorage.getItem("bunny_sound");
       const nextSettings: Settings = {

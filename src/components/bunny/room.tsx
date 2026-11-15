@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AtSign, Ban, Hash, Megaphone, Search, Settings as SettingsIcon, ShieldCheck, TriangleAlert, Users, X } from "lucide-react";
 import { useBunny } from "@/lib/bunny/use-bunny";
 import { ACCENTS, PRESETS, safeWallpaperUrl } from "@/lib/bunny/types";
-import { AdminTag, BunnyMark, Face } from "./ui";
+import { AdminTag, Face, StarMark } from "./ui";
 import { ServerView } from "./server-view";
 import { DirectView } from "./direct-view";
 import { ModView } from "./mod-view";
@@ -96,7 +96,7 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
         <header className="topbar">
           <div className="brand lg">
             <div className="mark">
-              <BunnyMark className="size-5" />
+              <StarMark className="size-5" />
             </div>
             <div>
               <h1>Bunny RTC{mode === "admin" ? " · Admin" : ""}</h1>

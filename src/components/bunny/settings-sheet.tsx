@@ -131,7 +131,7 @@ function ProfileSection({ bunny }: { bunny: Bunny }) {
           <input id="set-bio" className="input" value={bio} maxLength={80} placeholder="What are you up to?" onChange={(e) => setBio(e.target.value)} />
         </div>
         <div className="opt stack">
-          <span className="label">Bunny color</span>
+          <span className="label">Avatar color</span>
           <div className="swatches">
             {COLORS.map((c) => (
               <button key={c} type="button" className="swatch" style={{ background: c }} aria-label={`Color ${c}`} aria-pressed={color === c} onClick={() => setColor(c)} />
@@ -245,7 +245,7 @@ function NotificationSection({ bunny }: { bunny: Bunny }) {
         type="button"
         onClick={() => {
           if (supported && Notification.permission === "granted" && s.desktop) {
-            new Notification("Bunny RTC", { body: "Notifications are working 🐰", icon: "/favicon.svg" });
+            new Notification("Bunny RTC", { body: "Notifications are working ⭐", icon: "/favicon.svg" });
           } else bunny.say("Turn on desktop notifications first");
         }}
       >
