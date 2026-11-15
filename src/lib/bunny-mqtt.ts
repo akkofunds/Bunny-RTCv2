@@ -60,6 +60,7 @@ export class BunnySocket {
     private url: string,
     private clientId: string,
     private willTopic: string,
+    private topics: string[],
     private onReady: () => void,
     private onPublish: PublishHandler,
     private onDown: (reason: string) => void,
@@ -136,9 +137,7 @@ export class BunnySocket {
         this.ws?.close();
         return;
       }
-      this.subscribe("bunny-rtc/public/chat");
-      this.subscribe("bunny-rtc/public/history/+");
-      this.subscribe("bunny-rtc/public/presence/+");
+      for (const topic of this.topics) this.subscribe(topic);
       this.clearPing();
       this.ping = setInterval(() => this.send(0xc0, []), 15000);
       this.onReady();
@@ -156,6 +155,10 @@ export class BunnySocket {
       cursor += 2;
     }
     this.onPublish(topicField.value, decoder.decode(body.subarray(cursor)));
+  }
+
+  get connected() {
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 
   private subscribe(topic: string) {
