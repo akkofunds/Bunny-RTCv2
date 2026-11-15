@@ -1,41 +1,83 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Shield } from "lucide-react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { MediaRef } from "@/lib/bunny/media";
+import { inkFor, type RoleTag } from "@/lib/bunny/types";
+import { createPortal } from "react-dom";
 import type { Status } from "@/lib/bunny/types";
 
-export function BunnyMark({ className }: { className?: string }) {
+/** The platform mark: a rounded five-point star. */
+export function StarMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M8 10c0-4 1.2-7 2.2-7 .6 2.2.4 4.2-.2 6" />
-      <path d="M16 10c0-4-1.2-7-2.2-7-.6 2.2-.4 4.2.2 6" />
-      <path d="M7 13.5a5 5 0 0 0 10 0c0-2.2-1.4-3.5-5-3.5s-5 1.3-5 3.5z" />
-      <circle cx="10" cy="13" r=".7" fill="currentColor" stroke="none" />
-      <circle cx="14" cy="13" r=".7" fill="currentColor" stroke="none" />
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" aria-hidden>
+      <path d="M12 2.8l2.75 5.6 6.15.9-4.45 4.33 1.05 6.12L12 16.86 6.5 19.75l1.05-6.12L3.1 9.3l6.15-.9z" />
     </svg>
   );
 }
 
+/** Lets avatars fetch animated pictures without threading the loader everywhere. */
+export const MediaLoader = createContext<((ref: MediaRef) => Promise<string>) | null>(null);
+
+function useMediaUrl(ref?: MediaRef) {
+  const load = useContext(MediaLoader);
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setUrl(null);
+    if (!ref || !load) return;
+    let alive = true;
+    load(ref).then(
+      (u) => alive && setUrl(u),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [ref?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  return url;
+}
+
 export function Face({
   avatar,
+  anim,
   color,
   label,
   status,
   size,
 }: {
   avatar?: string;
+  anim?: MediaRef;
   color: string;
   label: string;
   status?: Status;
   size?: string;
 }) {
+  const animUrl = useMediaUrl(anim);
   return (
     <span
-      className="avatar"
+      className={`avatar ${animUrl ? "animated" : ""}`}
       style={{ background: `radial-gradient(circle at 32% 25%, color-mix(in srgb, ${color} 70%, white), ${color} 70%)`, ...(size ? { width: size, height: size } : {}) }}
       role="img"
       aria-label={label}
     >
-      {avatar ? <img src={avatar} alt="" /> : <BunnyMark />}
+      {animUrl && anim?.kind === "video" ? (
+        <video src={animUrl} autoPlay muted loop playsInline />
+      ) : animUrl ? (
+        <img src={animUrl} alt="" />
+      ) : avatar ? (
+        <img src={avatar} alt="" />
+      ) : (
+        <StarMark />
+      )}
       {status ? <i className={`dot ${status}`} aria-hidden /> : null}
+    </span>
+  );
+}
+
+/** Admin tag (default gold) or a custom role tag chosen by an admin. */
+export function RoleBadge({ role, admin }: { role: RoleTag | null; admin: boolean }) {
+  if (!role && !admin) return null;
+  if (!role) return <AdminTag />;
+  return (
+    <span className={`tag custom ${admin ? "admin" : ""}`} style={{ background: role.color, color: inkFor(role.color) }} title={admin ? "Verified admin" : "Role"}>
+      {role.text}
     </span>
   );
 }
@@ -43,7 +85,6 @@ export function Face({
 export function AdminTag() {
   return (
     <span className="tag" title="Verified Bunny RTC admin">
-      <Shield size={10} strokeWidth={2.6} />
       Admin
     </span>
   );
@@ -76,7 +117,19 @@ export function Choices<V extends string>({
 }
 
 /** A floating glass menu anchored at a point, kept inside the viewport. */
-export function Floating({ x, y, onClose, children }: { x: number; y: number; onClose: () => void; children: ReactNode }) {
+export function Floating({
+  x,
+  y,
+  onClose,
+  children,
+  className = "menu lg",
+}: {
+  x: number;
+  y: number;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   useLayoutEffect(() => {
@@ -105,11 +158,15 @@ export function Floating({ x, y, onClose, children }: { x: number; y: number; on
       document.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
-  return (
-    <div ref={ref} className="menu lg" style={pos} role="menu">
+  const node = (
+    <div ref={ref} className={className} style={pos} role="menu">
       {children}
     </div>
   );
+  // Glass panels use backdrop-filter, which traps position:fixed children.
+  // Render at the stage root so the menu is placed against the real viewport.
+  const host = typeof document !== "undefined" ? document.querySelector(".stage") : null;
+  return host ? createPortal(node, host) : node;
 }
 
 export async function shrinkImage(file: File, size = 128) {

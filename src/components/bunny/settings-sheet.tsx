@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import { ACCENTS, COLORS, type Settings } from "@/lib/bunny/types";
-import { Choices, Face, Toggle, shrinkImage } from "./ui";
+import { Choices, Face, Toggle, shrinkImage, shrinkWallpaper } from "./ui";
+import { prepareAnimated } from "@/lib/bunny/media";
 
 type Section = "profile" | "notifications" | "appearance" | "privacy" | "account";
 
@@ -80,6 +81,9 @@ function ProfileSection({ bunny }: { bunny: Bunny }) {
   const [bio, setBio] = useState(bunny.profile.bio);
   const [avatar, setAvatar] = useState(bunny.profile.avatar);
   const [color, setColor] = useState(bunny.profile.color);
+  const me = bunny.identity?.id || "";
+  const animAllowed = bunny.canAnimate(me) || !!bunny.session;
+  const [animBusy, setAnimBusy] = useState<number | null>(null);
   const dirty = name !== bunny.profile.name || bio !== bunny.profile.bio || avatar !== bunny.profile.avatar || color !== bunny.profile.color;
   const valid = name.trim().length >= 2;
   const set = (patch: Partial<Settings>) => bunny.updateSettings(patch);
@@ -89,7 +93,7 @@ function ProfileSection({ bunny }: { bunny: Bunny }) {
       <p className="sub">How you show up in the room and in direct messages.</p>
       <div className="group">
         <div className="profile-card">
-          <Face avatar={avatar} color={color} label="Preview" status={bunny.settings.status} />
+          <Face avatar={avatar} anim={animAllowed ? bunny.profile.anim : undefined} color={color} label="Preview" status={bunny.settings.status} />
           <div style={{ minWidth: 0, flex: 1 }}>
             <strong style={{ fontSize: "1.05rem", display: "block" }}>{name || "Your name"}</strong>
             <span style={{ fontSize: "0.8rem", color: "var(--color-faint)" }}>{bio || "No status yet"}</span>
@@ -117,6 +121,45 @@ function ProfileSection({ bunny }: { bunny: Bunny }) {
           </div>
         </div>
       </div>
+      {animAllowed ? (
+        <div className="group">
+          <div className="opt">
+            <div className="txt">
+              <strong>Animated profile picture ✨</strong>
+              <span>{bunny.profile.anim ? "Your animated picture is live." : "GIF, WebP, MP4 or WebM up to 2 MB. Shown instead of your photo."}</span>
+            </div>
+            <label className={`gbtn sm file ${animBusy !== null ? "busy" : ""}`}>
+              {animBusy !== null ? `${Math.round(animBusy * 100)}%` : bunny.profile.anim ? "Replace" : "Upload"}
+              <input
+                type="file"
+                accept="image/gif,image/webp,video/mp4,video/webm"
+                disabled={animBusy !== null}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  try {
+                    const p = await prepareAnimated(file);
+                    setAnimBusy(0);
+                    const [ref] = await bunny.uploadMedia([p], false, (d, t) => setAnimBusy(d / t));
+                    bunny.saveProfile({ ...bunny.profile, anim: ref });
+                    bunny.say("Animated picture updated");
+                  } catch (err) {
+                    bunny.say(err instanceof Error ? err.message : "Upload failed");
+                  } finally {
+                    setAnimBusy(null);
+                  }
+                }}
+              />
+            </label>
+            {bunny.profile.anim ? (
+              <button className="gbtn sm" type="button" onClick={() => bunny.saveProfile({ ...bunny.profile, anim: undefined })}>
+                Remove
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <div className="group">
         <div className="opt stack">
           <label className="label" htmlFor="set-name">
@@ -131,7 +174,7 @@ function ProfileSection({ bunny }: { bunny: Bunny }) {
           <input id="set-bio" className="input" value={bio} maxLength={80} placeholder="What are you up to?" onChange={(e) => setBio(e.target.value)} />
         </div>
         <div className="opt stack">
-          <span className="label">Bunny color</span>
+          <span className="label">Avatar color</span>
           <div className="swatches">
             {COLORS.map((c) => (
               <button key={c} type="button" className="swatch" style={{ background: c }} aria-label={`Color ${c}`} aria-pressed={color === c} onClick={() => setColor(c)} />
@@ -159,7 +202,7 @@ function ProfileSection({ bunny }: { bunny: Bunny }) {
           type="button"
           disabled={!dirty || !valid}
           onClick={() => {
-            if (bunny.saveProfile({ name, bio, avatar, color })) bunny.say("Profile saved");
+            if (bunny.saveProfile({ name, bio, avatar, color, anim: bunny.profile.anim })) bunny.say("Profile saved");
           }}
         >
           Save changes
@@ -245,7 +288,7 @@ function NotificationSection({ bunny }: { bunny: Bunny }) {
         type="button"
         onClick={() => {
           if (supported && Notification.permission === "granted" && s.desktop) {
-            new Notification("Bunny RTC", { body: "Notifications are working 🐰", icon: "/favicon.svg" });
+            new Notification("Bunny RTC", { body: "Notifications are working ⭐", icon: "/favicon.svg" });
           } else bunny.say("Turn on desktop notifications first");
         }}
       >
@@ -269,6 +312,12 @@ function AppearanceSection({ bunny }: { bunny: Bunny }) {
             {Object.entries(ACCENTS).map(([key, a]) => (
               <button key={key} type="button" className="swatch" title={a.label} style={{ background: a.color }} aria-label={a.label} aria-pressed={s.accent === key} onClick={() => set({ accent: key })} />
             ))}
+            {bunny.session ? (
+              <label className="swatch custom-swatch" title="Any color (admin)" aria-pressed={s.accent.startsWith("#")} style={{ background: s.accent.startsWith("#") ? s.accent : undefined }}>
+                <input type="color" value={s.accent.startsWith("#") ? s.accent : "#ff6b9a"} onChange={(e) => set({ accent: e.target.value })} aria-label="Custom accent color" />
+                {s.accent.startsWith("#") ? null : <span>+</span>}
+              </label>
+            ) : null}
           </div>
         </div>
         <Opt title="Glass" hint="Clear shows more wallpaper; tinted is easiest to read.">
@@ -295,6 +344,7 @@ function AppearanceSection({ bunny }: { bunny: Bunny }) {
             ]}
           />
         </Opt>
+        <MyWallpaper bunny={bunny} />
         <div className="opt stack">
           <span className="label">Wallpaper dimming · {s.dim}%</span>
           <input type="range" min={0} max={70} value={s.dim} onChange={(e) => set({ dim: Number(e.target.value) })} aria-label="Wallpaper dimming" />
@@ -494,5 +544,54 @@ function AccountSection({ bunny }: { bunny: Bunny }) {
         </Opt>
       </div>
     </>
+  );
+}
+
+function MyWallpaper({ bunny }: { bunny: Bunny }) {
+  const [mine, setMine] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("bunny_mywall");
+    } catch {
+      return null;
+    }
+  });
+  const apply = (value: string | null) => {
+    try {
+      if (value) localStorage.setItem("bunny_mywall", value);
+      else localStorage.removeItem("bunny_mywall");
+    } catch {
+      bunny.say("Your browser couldn't save that image");
+      return;
+    }
+    setMine(value);
+    window.dispatchEvent(new Event("bunny-mywall"));
+  };
+  return (
+    <div className="opt">
+      <div className="txt">
+        <strong>My wallpaper</strong>
+        <span>{mine ? "Only you see this. Admin wallpaper changes are hidden while it's on." : "Use your own picture instead of the server's wallpaper."}</span>
+      </div>
+      <label className="gbtn sm file">
+        {mine ? "Change" : "Upload"}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (!file) return;
+            const data = await shrinkWallpaper(file);
+            if (data) apply(data);
+            else bunny.say("That image is too large");
+          }}
+        />
+      </label>
+      {mine ? (
+        <button className="gbtn sm" type="button" onClick={() => apply(null)}>
+          Use server&apos;s
+        </button>
+      ) : null}
+    </div>
   );
 }

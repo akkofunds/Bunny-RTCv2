@@ -55,6 +55,7 @@ export class BunnySocket {
   private ping: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private buffer = new Uint8Array(0);
+  private dynamic = new Set<string>();
 
   constructor(
     private url: string,
@@ -138,6 +139,7 @@ export class BunnySocket {
         return;
       }
       for (const topic of this.topics) this.subscribe(topic);
+      for (const topic of this.dynamic) this.subscribe(topic);
       this.clearPing();
       this.ping = setInterval(() => this.send(0xc0, []), 15000);
       this.onReady();
@@ -155,6 +157,18 @@ export class BunnySocket {
       cursor += 2;
     }
     this.onPublish(topicField.value, decoder.decode(body.subarray(cursor)));
+  }
+
+  /** Subscribe after connect (kept across reconnects until unwatched). */
+  watch(topic: string) {
+    this.dynamic.add(topic);
+    this.subscribe(topic);
+  }
+
+  unwatch(topic: string) {
+    if (!this.dynamic.delete(topic)) return;
+    const id = this.seq++ & 0xffff;
+    this.send(0xa2, [id >> 8, id & 0xff, ...utf8(topic)]);
   }
 
   get connected() {
