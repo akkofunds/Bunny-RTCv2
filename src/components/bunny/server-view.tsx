@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Copy, CornerUpLeft, Hash, Pencil, Search, Send, Smile, Trash2, X } from "lucide-react";
+import { ArrowDown, Copy, CornerUpLeft, Hash, Pencil, Search, Send, Smile, SmilePlus, Trash2, X } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import type { Msg } from "@/lib/bunny/types";
 import { RichText, mentions } from "./rich-text";
-import { AdminTag, Face, dayLabel, timeLabel } from "./ui";
+import { AdminTag, Face, Floating, dayLabel, timeLabel } from "./ui";
 import type { MenuTarget } from "./user-menu";
 
 const QUICK = ["🔥", "😂", "❤️", "👍", "👀", "⭐"];
@@ -49,6 +49,9 @@ export function ServerView({
   const [editText, setEditText] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [reactFor, setReactFor] = useState<{ msg: Msg; x: number; y: number } | null>(null);
+  const [moreEmoji, setMoreEmoji] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const threadRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -147,7 +150,13 @@ export function ServerView({
           return (
             <div key={msg.id}>
               {showDay ? <div className="day">{dayLabel(msg.at)}</div> : null}
-              <article className={`msg ${cont ? "cont" : ""} ${mentioned ? "mention" : ""} ${isBanned ? "banned" : ""}`}>
+              <article
+                className={`msg ${cont ? "cont" : ""} ${mentioned ? "mention" : ""} ${isBanned ? "banned" : ""} ${selected === msg.id ? "selected" : ""}`}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest("button, a, textarea, input")) return;
+                  setSelected((cur) => (cur === msg.id ? null : msg.id));
+                }}
+              >
                 <button type="button" className="face-btn" onClick={open} aria-label={`Open ${msg.name}`}>
                   <Face avatar={info.avatar} color={info.color} label={msg.name} />
                 </button>
@@ -168,59 +177,6 @@ export function ServerView({
                     {bunny.friends[msg.authorId] ? <span className="tag friend">Friend</span> : null}
                     <span className="stamp">{timeLabel(msg.at, h24)}</span>
                   </div>
-                  <span className="row-actions lg-soft">
-                    {QUICK.map((emoji) => (
-                      <button key={emoji} className="tiny" type="button" aria-label={`React ${emoji}`} onClick={() => bunny.react(msg, emoji)}>
-                        {emoji}
-                      </button>
-                    ))}
-                    <button
-                      className="tiny"
-                      type="button"
-                      aria-label="Reply"
-                      onClick={() => {
-                        setReplyTo(msg);
-                        composerRef.current?.focus();
-                      }}
-                    >
-                      <CornerUpLeft size={14} />
-                    </button>
-                    {mine ? (
-                      <button
-                        className="tiny"
-                        type="button"
-                        aria-label="Edit message"
-                        onClick={() => {
-                          setEditing(msg.id);
-                          setEditText(msg.text);
-                          setConfirmDelete(null);
-                        }}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    ) : (
-                      <button
-                        className="tiny"
-                        type="button"
-                        aria-label="Copy message"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(msg.text);
-                            bunny.say("Copied");
-                          } catch {
-                            bunny.say("Could not copy");
-                          }
-                        }}
-                      >
-                        <Copy size={14} />
-                      </button>
-                    )}
-                    {canDelete ? (
-                      <button className="tiny danger" type="button" aria-label="Delete message" onClick={() => setConfirmDelete(msg.id)}>
-                        <Trash2 size={14} />
-                      </button>
-                    ) : null}
-                  </span>
                   {editing === msg.id ? (
                     <div className="editbox">
                       <textarea
@@ -270,7 +226,7 @@ export function ServerView({
                           setConfirmDelete(null);
                         }}
                       >
-                        Delete{mine ? "" : ` ${msg.name}'s message`}
+                        Delete
                       </button>
                       <button className="gbtn sm" type="button" onClick={() => setConfirmDelete(null)}>
                         Keep
@@ -289,6 +245,73 @@ export function ServerView({
                       })}
                     </div>
                   ) : null}
+                </div>
+                <div className="msg-slot">
+                  <div className="msg-actions lg-soft" role="toolbar" aria-label="Message actions">
+                    <button
+                      className="tiny"
+                      type="button"
+                      aria-label="Add reaction"
+                      title="React"
+                      onClick={(e) => {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setReactFor({ msg, x: r.right - 288, y: r.bottom + 6 });
+                      }}
+                    >
+                      <SmilePlus size={15} />
+                    </button>
+                    <button
+                      className="tiny"
+                      type="button"
+                      aria-label="Reply"
+                      title="Reply"
+                      onClick={() => {
+                        setReplyTo(msg);
+                        setSelected(null);
+                        composerRef.current?.focus();
+                      }}
+                    >
+                      <CornerUpLeft size={15} />
+                    </button>
+                    {mine ? (
+                      <button
+                        className="tiny"
+                        type="button"
+                        aria-label="Edit message"
+                        title="Edit"
+                        onClick={() => {
+                          setEditing(msg.id);
+                          setEditText(msg.text);
+                          setConfirmDelete(null);
+                          setSelected(null);
+                        }}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    ) : (
+                      <button
+                        className="tiny"
+                        type="button"
+                        aria-label="Copy message"
+                        title="Copy text"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(msg.text);
+                            bunny.say("Copied");
+                          } catch {
+                            bunny.say("Could not copy");
+                          }
+                        }}
+                      >
+                        <Copy size={15} />
+                      </button>
+                    )}
+                    {canDelete ? (
+                      <button className="tiny danger" type="button" aria-label="Delete message" title="Delete" onClick={() => setConfirmDelete(msg.id)}>
+                        <Trash2 size={15} />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </article>
             </div>
@@ -310,6 +333,54 @@ export function ServerView({
         >
           <ArrowDown size={14} /> Latest
         </button>
+      ) : null}
+      {reactFor ? (
+        <Floating
+          x={reactFor.x}
+          y={reactFor.y}
+          className="menu lg react-pop"
+          onClose={() => {
+            setReactFor(null);
+            setMoreEmoji(false);
+          }}
+        >
+          <div className="quick-row">
+            {QUICK.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                aria-label={`React ${emoji}`}
+                onClick={() => {
+                  bunny.react(reactFor.msg, emoji);
+                  setReactFor(null);
+                  setMoreEmoji(false);
+                }}
+              >
+                {emoji}
+              </button>
+            ))}
+            <button type="button" className="more" aria-label="More emoji" aria-expanded={moreEmoji} onClick={() => setMoreEmoji((v) => !v)}>
+              <SmilePlus size={17} />
+            </button>
+          </div>
+          {moreEmoji ? (
+            <div className="grid" style={{ marginTop: "0.35rem" }}>
+              {EMOJIS.map((emoji, i) => (
+                <button
+                  key={emoji + i}
+                  type="button"
+                  onClick={() => {
+                    bunny.react(reactFor.msg, emoji);
+                    setReactFor(null);
+                    setMoreEmoji(false);
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </Floating>
       ) : null}
       <TypingLine names={typingNames} />
       <div className="composer-wrap">

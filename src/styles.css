@@ -147,7 +147,7 @@
 .modal.lg,
 .picker.lg,
 .toast.lg,
-.row-actions.lg-soft {
+.msg-actions.lg-soft {
   background: var(--float-bg);
   backdrop-filter: blur(var(--float-blur)) saturate(170%);
   -webkit-backdrop-filter: blur(var(--float-blur)) saturate(170%);
@@ -555,9 +555,10 @@
 }
 
 .msg {
+  --actions-w: 8.1rem;
   position: relative;
   display: grid;
-  grid-template-columns: 2.5rem 1fr;
+  grid-template-columns: 2.5rem minmax(0, 1fr) var(--actions-w);
   gap: 0.75rem;
   padding: 0.35rem 0.6rem;
   border-radius: 1rem;
@@ -586,7 +587,7 @@
   display: none;
 }
 .compact .msg {
-  grid-template-columns: 1.75rem 1fr;
+  grid-template-columns: 1.75rem minmax(0, 1fr) var(--actions-w);
   gap: 0.5rem;
   padding-top: 0.15rem;
   padding-bottom: 0.15rem;
@@ -736,19 +737,70 @@
   white-space: nowrap;
 }
 
-.row-actions {
-  position: absolute;
-  top: -0.9rem;
-  right: 0.6rem;
-  display: none;
-  gap: 0.1rem;
-  padding: 0.2rem;
-  border-radius: 999px;
-  z-index: 2;
+/* Actions live in their own reserved column, so they never cover message text. */
+.msg-slot {
+  position: relative;
+  grid-column: 3;
+  grid-row: 1;
+  width: var(--actions-w);
+  height: 0;
+  align-self: start;
 }
-.msg:hover .row-actions,
-.msg:focus-within .row-actions {
+.msg-actions {
+  position: absolute;
+  top: -0.1rem;
+  right: 0;
+  z-index: 3;
   display: inline-flex;
+  gap: 0.1rem;
+  padding: 0.18rem;
+  border-radius: 999px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(2px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    visibility 0s linear 140ms;
+}
+.msg:hover .msg-actions,
+.msg:focus-within .msg-actions,
+.msg.selected .msg-actions {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+.react-pop {
+  width: auto;
+  padding: 0.4rem;
+}
+.quick-row {
+  display: flex;
+  gap: 0.15rem;
+}
+.quick-row button {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 1.3rem;
+  transition:
+    background 140ms ease,
+    transform 160ms cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+.quick-row button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: scale(1.12);
+}
+.quick-row .more {
+  color: var(--color-muted);
+}
+.react-pop .grid {
+  width: 16.5rem;
 }
 .tiny {
   width: 1.85rem;
@@ -1271,12 +1323,12 @@ textarea.input {
   flex: 1;
   min-width: 0;
 }
-.opt .txt strong {
+.opt .txt > strong {
   display: block;
   font-size: 0.9rem;
   font-weight: 560;
 }
-.opt .txt span {
+.opt .txt > span {
   display: block;
   font-size: 0.76rem;
   color: var(--color-faint);
@@ -1763,12 +1815,87 @@ input[type="range"] {
   border-radius: 999px;
   font-size: 0.82rem;
   z-index: 50;
-  white-space: nowrap;
+  max-width: calc(100vw - 2rem);
+  text-align: center;
   animation: pop 180ms ease;
 }
 
 .only-mobile {
   display: none !important;
+}
+
+/* Labels never wrap inside a control; anything that can't fit truncates cleanly. */
+.gbtn,
+.seg,
+.choices button,
+.nav-item,
+.menu-item,
+.pill-kind,
+.tag,
+.badge {
+  white-space: nowrap;
+}
+.gbtn,
+.choices button,
+.menu-item {
+  flex-shrink: 0;
+}
+.menu-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sheet-body h3 {
+  padding-right: 2.6rem;
+}
+.who {
+  min-width: 0;
+}
+.who .name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-head h2,
+.panel-head p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Touch screens have no hover: tap a message to show its actions underneath. */
+@media (hover: none) {
+  .msg,
+  .compact .msg {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+  }
+  .compact .msg {
+    grid-template-columns: 1.75rem minmax(0, 1fr);
+  }
+  .msg-slot {
+    grid-column: 2;
+    grid-row: auto;
+    width: auto;
+    height: auto;
+    display: none;
+  }
+  .msg.selected .msg-slot {
+    display: block;
+    margin-top: 0.35rem;
+  }
+  .msg-actions {
+    position: static;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+  .msg.selected {
+    background: rgba(255, 255, 255, 0.07);
+  }
+  .tiny {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
 }
 
 @media (max-width: 860px) {
@@ -1824,9 +1951,6 @@ input[type="range"] {
   .composer-wrap {
     padding: 0 0.45rem 0.45rem;
   }
-  .row-actions {
-    right: 0.2rem;
-  }
   .direct .convos {
     width: auto;
     flex: 1;
@@ -1859,6 +1983,16 @@ input[type="range"] {
   .sheet-body {
     padding: 1.1rem 1rem 1.4rem;
   }
+  .opt {
+    flex-wrap: wrap;
+  }
+  .opt .txt {
+    min-width: 11rem;
+  }
+  .log-head time {
+    margin-left: 0;
+    width: 100%;
+  }
   .diff {
     grid-template-columns: 1fr;
   }
@@ -1874,4 +2008,25 @@ input[type="range"] {
   backdrop-filter: blur(10px) saturate(170%);
   -webkit-backdrop-filter: blur(10px) saturate(170%);
   text-shadow: var(--legible);
+}
+
+@media (max-width: 400px) {
+  .topbar {
+    gap: 0.3rem;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+  }
+  .seg {
+    padding: 0 0.6rem;
+    min-height: 2.25rem;
+  }
+  .tools .gbtn.icon {
+    width: 2.1rem;
+    min-width: 2.1rem;
+    min-height: 2.1rem;
+  }
+  .mark {
+    width: 2rem;
+    height: 2rem;
+  }
 }

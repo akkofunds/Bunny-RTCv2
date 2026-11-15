@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Shield } from "lucide-react";
 import type { Status } from "@/lib/bunny/types";
 
@@ -73,7 +74,19 @@ export function Choices<V extends string>({
 }
 
 /** A floating glass menu anchored at a point, kept inside the viewport. */
-export function Floating({ x, y, onClose, children }: { x: number; y: number; onClose: () => void; children: ReactNode }) {
+export function Floating({
+  x,
+  y,
+  onClose,
+  children,
+  className = "menu lg",
+}: {
+  x: number;
+  y: number;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   useLayoutEffect(() => {
@@ -102,11 +115,15 @@ export function Floating({ x, y, onClose, children }: { x: number; y: number; on
       document.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
-  return (
-    <div ref={ref} className="menu lg" style={pos} role="menu">
+  const node = (
+    <div ref={ref} className={className} style={pos} role="menu">
       {children}
     </div>
   );
+  // Glass panels use backdrop-filter, which traps position:fixed children.
+  // Render at the stage root so the menu is placed against the real viewport.
+  const host = typeof document !== "undefined" ? document.querySelector(".stage") : null;
+  return host ? createPortal(node, host) : node;
 }
 
 export async function shrinkImage(file: File, size = 128) {
