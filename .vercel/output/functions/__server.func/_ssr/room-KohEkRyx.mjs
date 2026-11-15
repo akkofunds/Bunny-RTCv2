@@ -1,7 +1,7 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { J as require_react, n as require_react_dom, x as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
 import { $ as Ban, A as Megaphone, B as ImageOff, C as RotateCcw, D as Palette, E as Paperclip, F as LoaderCircle, G as Ellipsis, H as Eye, I as LayoutGrid, J as Copy, K as Download, L as KeyRound, M as LogIn, N as Lock, O as MessagesSquare, Q as Bell, R as Inbox, S as ScrollText, U as EyeOff, V as Hash, W as Eraser, X as Clock, Y as CloudUpload, Z as Check, _ as ShieldCheck, a as UserX, b as Send, c as Upload, d as Timer, et as AtSign, f as Terminal, g as Shield, h as SmilePlus, i as User, j as LogOut, k as MessageCircle, l as TriangleAlert, m as Smile, n as X, nt as ArrowLeft, o as UserPlus, p as Sparkles, q as CornerUpLeft, r as Users, rt as ArrowDown, s as UserMinus, t as Zap, u as Trash2, v as ShieldAlert, w as Pencil, x as Search, y as Settings, z as Image$1 } from "../_libs/lucide-react.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/room-By1Hs3cF.js
+//#region node_modules/.nitro/vite/services/ssr/assets/room-KohEkRyx.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var import_react_dom = require_react_dom();
@@ -1377,13 +1377,18 @@ function useBunny(mode) {
 							text: body.text.slice(0, 2e3),
 							name: cleanName(body.name) || "Guest",
 							color: safeColor(body.color, env.from),
-							media: cleanMedia(body.media)
+							media: cleanMedia(body.media),
+							editedAt: Number(body.editedAt) || void 0
 						};
 						const fresh = !seenDmRef.current.has(dm.id);
 						seenDmRef.current.add(dm.id);
-						setDms((prev) => prev[dm.id] ? prev : {
-							...prev,
-							[dm.id]: dm
+						setDms((prev) => {
+							const old = prev[dm.id];
+							if (old && (old.editedAt || 0) >= (dm.editedAt || 0)) return prev;
+							return {
+								...prev,
+								[dm.id]: dm
+							};
 						});
 						if (incoming && isPoint(env.fb)) setContacts((prev) => {
 							const old = prev[peer];
@@ -1416,11 +1421,28 @@ function useBunny(mode) {
 							text: body.text.slice(0, 2e3),
 							name: cleanName(body.name) || "Guest",
 							color: safeColor(body.color, env.from),
-							media: cleanMedia(body.media)
+							media: cleanMedia(body.media),
+							editedAt: Number(body.editedAt) || void 0
 						};
-						setAllDms((prev) => prev[dm.id] ? prev : {
-							...prev,
-							[dm.id]: dm
+						const before = allDmsRef.current[dm.id];
+						if (before && dm.editedAt && (before.editedAt || 0) < dm.editedAt && before.text !== dm.text) addLog({
+							key: `dmedit:${dm.id}:${dm.editedAt}`,
+							kind: "edit",
+							scope: "direct",
+							msgId: dm.id,
+							authorId: dm.from,
+							authorName: dm.name,
+							before: before.text,
+							after: dm.text,
+							at: dm.editedAt
+						});
+						setAllDms((prev) => {
+							const old = prev[dm.id];
+							if (old && (old.editedAt || 0) >= (dm.editedAt || 0)) return prev;
+							return {
+								...prev,
+								[dm.id]: dm
+							};
 						});
 						know(env.from, dm.name, dm.color);
 					}
@@ -2133,6 +2155,68 @@ function useBunny(mode) {
 		friends,
 		contacts
 	]);
+	const editDirect = (0, import_react.useCallback)(async (dm, text) => {
+		const me = idRef.current;
+		const clean = text.trim().slice(0, 2e3);
+		if (!me || dm.from !== me.id || clean === dm.text || !clean && !dm.media?.length) return false;
+		const info = lookup(dm.to);
+		if (!info.box) {
+			setToast("Can't edit until they've been online again");
+			return false;
+		}
+		const editedAt = Date.now();
+		const p = profileRef.current;
+		const env = await seal({
+			[me.id]: {
+				x: me.box.x,
+				y: me.box.y
+			},
+			[dm.to]: info.box,
+			mod: ESCROW_BOX_PUB
+		}, {
+			text: clean,
+			name: p.name,
+			color: p.color,
+			media: dm.media,
+			editedAt
+		});
+		const body = JSON.stringify({
+			t: "dm",
+			id: dm.id,
+			from: me.id,
+			to: dm.to,
+			at: dm.at,
+			fb: {
+				x: me.box.x,
+				y: me.box.y
+			},
+			env
+		});
+		publish(T.INBOX + dm.to + "/dm-" + dm.id, body, true);
+		publish(T.INBOX + me.id + "/dm-" + dm.id, body, true);
+		setDms((prev) => ({
+			...prev,
+			[dm.id]: {
+				...dm,
+				text: clean,
+				editedAt
+			}
+		}));
+		sealLog({
+			key: `dmedit:${dm.id}:${editedAt}`,
+			kind: "edit",
+			scope: "direct",
+			msgId: dm.id,
+			authorId: dm.from,
+			authorName: dm.name,
+			before: dm.text,
+			after: clean,
+			actorId: me.id,
+			actorName: p.name,
+			at: editedAt
+		});
+		return true;
+	}, [lookup]);
 	const unsendDirect = (0, import_react.useCallback)((dm) => {
 		const me = idRef.current;
 		if (!me || dm.from !== me.id) return;
@@ -2456,6 +2540,7 @@ function useBunny(mode) {
 		openDirect,
 		sendDirect,
 		unsendDirect,
+		editDirect,
 		ackWarning,
 		restoreFromToken,
 		ban,
@@ -3883,6 +3968,15 @@ function DirectView({ bunny, openMenu }) {
 		peer,
 		me
 	]);
+	const [selected, setSelected] = (0, import_react.useState)(null);
+	const [editing, setEditing] = (0, import_react.useState)(null);
+	const [editText, setEditText] = (0, import_react.useState)("");
+	const [confirmDelete, setConfirmDelete] = (0, import_react.useState)(null);
+	async function saveEdit(d) {
+		if (!editText.trim() && !d.media?.length) return;
+		if (editText.trim() === d.text) return setEditing(null);
+		if (await bunny.editDirect(d, editText)) setEditing(null);
+	}
 	const mountedAt = (0, import_react.useRef)(Date.now());
 	const lastPeer = (0, import_react.useRef)(null);
 	(0, import_react.useEffect)(() => {
@@ -4116,27 +4210,119 @@ function DirectView({ bunny, openMenu }) {
 								children: [newDay ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 									className: "day",
 									children: dayLabel(d.at)
-								}) : gap ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bubble-gap" }) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: `bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""} ${d.at > mountedAt.current - 1500 ? "enter" : ""}`,
-									children: [
-										d.media ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MediaGrid, {
-											media: d.media,
-											load: bunny.loadMedia
-										}) : null,
-										d.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RichText, {
-											text: d.text,
-											selfName: bunny.profile.name
-										}) : null,
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("time", { children: timeLabel(d.at, bunny.settings.clock24) }),
-										mine ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-											className: "tiny unsend",
+								}) : gap ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bubble-gap" }) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: `bubble-row ${mine ? "mine" : ""} ${selected === d.id ? "selected" : ""} ${editing === d.id ? "editing" : ""}`,
+									onClick: (e) => {
+										if (e.target.closest("button, a, textarea, video")) return;
+										setSelected((cur) => cur === d.id ? null : d.id);
+									},
+									children: editing === d.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "bubble-edit lg-soft",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
+											className: "input",
+											autoFocus: true,
+											value: editText,
+											maxLength: 2e3,
+											"aria-label": "Edit message",
+											onChange: (e) => setEditText(e.target.value),
+											onKeyDown: (e) => {
+												if (e.key === "Escape") setEditing(null);
+												if (e.key === "Enter" && !e.shiftKey) {
+													e.preventDefault();
+													saveEdit(d);
+												}
+											}
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "row",
+											style: { justifyContent: "flex-end" },
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "hint",
+													style: { marginRight: "auto" },
+													children: "Enter to save · Esc to cancel"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													className: "gbtn sm",
+													type: "button",
+													onClick: () => setEditing(null),
+													children: "Cancel"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													className: "gbtn sm primary",
+													type: "button",
+													onClick: () => void saveEdit(d),
+													children: "Save"
+												})
+											]
+										})]
+									}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: `bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""} ${d.at > mountedAt.current - 1500 ? "enter" : ""}`,
+										children: [
+											d.media ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MediaGrid, {
+												media: d.media,
+												load: bunny.loadMedia
+											}) : null,
+											d.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RichText, {
+												text: d.text,
+												selfName: bunny.profile.name
+											}) : null,
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("time", { children: [timeLabel(d.at, bunny.settings.clock24), d.editedAt ? " · edited" : ""] })
+										]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "bubble-actions lg-soft",
+										role: "toolbar",
+										"aria-label": "Message actions",
+										children: confirmDelete === d.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											className: "gbtn sm danger",
 											type: "button",
-											"aria-label": "Unsend message",
-											onClick: () => bunny.unsendDirect(d),
-											style: { color: "var(--color-ink)" },
-											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 13 })
-										}) : null
-									]
+											onClick: () => {
+												bunny.unsendDirect(d);
+												setConfirmDelete(null);
+											},
+											children: "Delete"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											className: "gbtn sm",
+											type: "button",
+											onClick: () => setConfirmDelete(null),
+											children: "Keep"
+										})] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+											mine && d.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												className: "tiny",
+												type: "button",
+												"aria-label": "Edit message",
+												title: "Edit",
+												onClick: () => {
+													setEditing(d.id);
+													setEditText(d.text);
+													setSelected(null);
+												},
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pencil, { size: 15 })
+											}) : null,
+											d.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												className: "tiny",
+												type: "button",
+												"aria-label": "Copy message",
+												title: "Copy",
+												onClick: async () => {
+													try {
+														await navigator.clipboard.writeText(d.text);
+														bunny.say("Copied");
+													} catch {
+														bunny.say("Could not copy");
+													}
+												},
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Copy, { size: 15 })
+											}) : null,
+											mine ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												className: "tiny danger",
+												type: "button",
+												"aria-label": "Delete message",
+												title: "Delete",
+												onClick: () => setConfirmDelete(d.id),
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 15 })
+											}) : null
+										] })
+									})] })
 								})]
 							}, d.id);
 						}),

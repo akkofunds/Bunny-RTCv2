@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Inbox, Lock, MessageCircle, MoreHorizontal, Paperclip, Send, Trash2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Inbox, Lock, MessageCircle, MoreHorizontal, Paperclip, Pencil, Send, Trash2, UserPlus, X } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import { RichText } from "./rich-text";
 import { Face, RoleBadge, ago, dayLabel, timeLabel } from "./ui";
@@ -22,6 +22,15 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
       .sort((a, b) => a.at - b.at);
   }, [bunny.dms, peer, me]);
 
+  const [selected, setSelected] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  async function saveEdit(d: (typeof thread)[number]) {
+    if (!editText.trim() && !d.media?.length) return;
+    if (editText.trim() === d.text) return setEditing(null);
+    if (await bunny.editDirect(d, editText)) setEditing(null);
+  }
   const mountedAt = useRef(Date.now());
   const lastPeer = useRef<string | null>(null);
   useEffect(() => {
@@ -176,15 +185,114 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
                 return (
                   <div key={d.id} style={{ display: "contents" }}>
                     {newDay ? <div className="day">{dayLabel(d.at)}</div> : gap ? <div className="bubble-gap" /> : null}
-                    <div className={`bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""} ${d.at > mountedAt.current - 1500 ? "enter" : ""}`}>
-                      {d.media ? <MediaGrid media={d.media} load={bunny.loadMedia} /> : null}
-                      {d.text ? <RichText text={d.text} selfName={bunny.profile.name} /> : null}
-                      <time>{timeLabel(d.at, bunny.settings.clock24)}</time>
-                      {mine ? (
-                        <button className="tiny unsend" type="button" aria-label="Unsend message" onClick={() => bunny.unsendDirect(d)} style={{ color: "var(--color-ink)" }}>
-                          <Trash2 size={13} />
-                        </button>
-                      ) : null}
+                    <div
+                      className={`bubble-row ${mine ? "mine" : ""} ${selected === d.id ? "selected" : ""} ${editing === d.id ? "editing" : ""}`}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest("button, a, textarea, video")) return;
+                        setSelected((cur) => (cur === d.id ? null : d.id));
+                      }}
+                    >
+                      {editing === d.id ? (
+                        <div className="bubble-edit lg-soft">
+                          <textarea
+                            className="input"
+                            autoFocus
+                            value={editText}
+                            maxLength={2000}
+                            aria-label="Edit message"
+                            onChange={(e) => setEditText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") setEditing(null);
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                void saveEdit(d);
+                              }
+                            }}
+                          />
+                          <div className="row" style={{ justifyContent: "flex-end" }}>
+                            <span className="hint" style={{ marginRight: "auto" }}>
+                              Enter to save · Esc to cancel
+                            </span>
+                            <button className="gbtn sm" type="button" onClick={() => setEditing(null)}>
+                              Cancel
+                            </button>
+                            <button className="gbtn sm primary" type="button" onClick={() => void saveEdit(d)}>
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className={`bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""} ${d.at > mountedAt.current - 1500 ? "enter" : ""}`}>
+                            {d.media ? <MediaGrid media={d.media} load={bunny.loadMedia} /> : null}
+                            {d.text ? <RichText text={d.text} selfName={bunny.profile.name} /> : null}
+                            <time>
+                              {timeLabel(d.at, bunny.settings.clock24)}
+                              {d.editedAt ? " · edited" : ""}
+                            </time>
+                          </div>
+                          <div className="bubble-actions lg-soft" role="toolbar" aria-label="Message actions">
+                            {confirmDelete === d.id ? (
+                              <>
+                                <button
+                                  className="gbtn sm danger"
+                                  type="button"
+                                  onClick={() => {
+                                    bunny.unsendDirect(d);
+                                    setConfirmDelete(null);
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                                <button className="gbtn sm" type="button" onClick={() => setConfirmDelete(null)}>
+                                  Keep
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {mine && d.text ? (
+                                  <button
+                                    className="tiny"
+                                    type="button"
+                                    aria-label="Edit message"
+                                    title="Edit"
+                                    onClick={() => {
+                                      setEditing(d.id);
+                                      setEditText(d.text);
+                                      setSelected(null);
+                                    }}
+                                  >
+                                    <Pencil size={15} />
+                                  </button>
+                                ) : null}
+                                {d.text ? (
+                                  <button
+                                    className="tiny"
+                                    type="button"
+                                    aria-label="Copy message"
+                                    title="Copy"
+                                    onClick={async () => {
+                                      try {
+                                        await navigator.clipboard.writeText(d.text);
+                                        bunny.say("Copied");
+                                      } catch {
+                                        bunny.say("Could not copy");
+                                      }
+                                    }}
+                                  >
+                                    <Copy size={15} />
+                                  </button>
+                                ) : null}
+                                {mine ? (
+                                  <button className="tiny danger" type="button" aria-label="Delete message" title="Delete" onClick={() => setConfirmDelete(d.id)}>
+                                    <Trash2 size={15} />
+                                  </button>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 );

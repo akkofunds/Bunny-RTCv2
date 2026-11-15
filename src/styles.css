@@ -1587,16 +1587,6 @@ input[type="range"] {
   opacity: 0.65;
   margin-top: 0.15rem;
 }
-.bubble .unsend {
-  position: absolute;
-  left: -2.3rem;
-  top: 50%;
-  transform: translateY(-50%);
-  display: none;
-}
-.bubble:hover .unsend {
-  display: grid;
-}
 .bubble-gap {
   height: 0.5rem;
 }
@@ -2866,4 +2856,71 @@ span.tag.custom.admin {
   justify-content: center;
   gap: 0.35rem;
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* DM rows: the whole row is the hover target, so actions stay reachable */
+.bubble-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.05rem 0;
+}
+.bubble-row.mine {
+  flex-direction: row-reverse;
+}
+.bubble-row .bubble {
+  align-self: auto;
+  flex: 0 1 auto;
+}
+.bubble-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.18rem;
+  border-radius: 999px;
+  flex: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.92);
+  transition:
+    opacity 150ms ease,
+    transform 220ms var(--spring),
+    visibility 0s linear 150ms;
+}
+.bubble-actions:empty {
+  display: none;
+}
+.bubble-row:hover .bubble-actions,
+.bubble-row:focus-within .bubble-actions,
+.bubble-row.selected .bubble-actions {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 150ms ease,
+    transform 220ms var(--spring);
+}
+.bubble-actions .gbtn.sm {
+  min-height: 1.85rem;
+}
+.bubble-edit {
+  width: min(34rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border-radius: 1.2rem;
+  animation: viewIn 240ms var(--ease-out) backwards;
+}
+.bubble-edit textarea {
+  min-height: 4rem;
+}
+@media (hover: none) {
+  .bubble-row.selected .bubble {
+    box-shadow:
+      inset 0 1px 0.5px rgba(255, 255, 255, 0.5),
+      0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
 }

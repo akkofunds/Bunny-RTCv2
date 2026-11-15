@@ -72,6 +72,7 @@ export type DmMsg = {
   name: string;
   color?: string;
   media?: MediaRef[];
+  editedAt?: number;
 };
 
 export type Friend = { id: string; name: string; color: string; avatar?: string; box: Point; since: number };

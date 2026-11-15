@@ -1,24 +1,24 @@
-//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-DJYNepxj.js
+//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-CaOsLMVQ.js
 var tsrStartManifest = () => ({ routes: {
 	__root__: {
 		filePath: "/home/user/Bunny-RTCv2/src/routes/__root.tsx",
 		children: ["/", "/admin"],
-		preloads: ["/assets/index-YoF9J1QC.js"],
+		preloads: ["/assets/index-BRP5Oa_u.js"],
 		scripts: [{ attrs: {
 			type: "module",
 			async: !0,
-			src: "/assets/index-YoF9J1QC.js"
+			src: "/assets/index-BRP5Oa_u.js"
 		} }]
 	},
 	"/": {
 		filePath: "/home/user/Bunny-RTCv2/src/routes/index.tsx",
 		children: void 0,
-		preloads: ["/assets/routes-Bg3nSGWM.js", "/assets/room-CoYFekzU.js"]
+		preloads: ["/assets/routes-Ds5Nzarl.js", "/assets/room-C2F18Vw_.js"]
 	},
 	"/admin": {
 		filePath: "/home/user/Bunny-RTCv2/src/routes/admin.tsx",
 		children: void 0,
-		preloads: ["/assets/admin-CzhihZu8.js", "/assets/room-CoYFekzU.js"]
+		preloads: ["/assets/admin-DuvsnfnV.js", "/assets/room-C2F18Vw_.js"]
 	}
 } });
 //#endregion

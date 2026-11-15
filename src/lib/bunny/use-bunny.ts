@@ -486,7 +486,7 @@ export function useBunny(mode: "user" | "admin") {
         if (!env || env.t !== "dm" || !ID_RE.test(env.id) || !USER_RE.test(env.from) || !USER_RE.test(env.to)) return;
         if (uid !== env.from && uid !== env.to) return;
         if (mine) {
-          const body = await open<{ text: string; name: string; color?: string; media?: unknown }>(env.env, me.id, me.box);
+          const body = await open<{ text: string; name: string; color?: string; media?: unknown; editedAt?: number }>(env.env, me.id, me.box);
           if (body && typeof body.text === "string") {
             const peer = env.from === me.id ? env.to : env.from;
             const incoming = env.from !== me.id;
@@ -503,10 +503,15 @@ export function useBunny(mode: "user" | "admin") {
               name: cleanName(body.name) || "Guest",
               color: safeColor(body.color, env.from),
               media: cleanMedia(body.media),
+              editedAt: Number(body.editedAt) || undefined,
             };
             const fresh = !seenDmRef.current.has(dm.id);
             seenDmRef.current.add(dm.id);
-            setDms((prev) => (prev[dm.id] ? prev : { ...prev, [dm.id]: dm }));
+            setDms((prev) => {
+              const old = prev[dm.id];
+              if (old && (old.editedAt || 0) >= (dm.editedAt || 0)) return prev;
+              return { ...prev, [dm.id]: dm };
+            });
             if (incoming && isPoint(env.fb)) {
               setContacts((prev) => {
                 const old = prev[peer];
@@ -521,7 +526,7 @@ export function useBunny(mode: "user" | "admin") {
           }
         }
         if (escrowReady && sessionRef.current) {
-          const body = await open<{ text: string; name: string; color?: string; media?: unknown }>(env.env, "mod", sessionRef.current.escrow);
+          const body = await open<{ text: string; name: string; color?: string; media?: unknown; editedAt?: number }>(env.env, "mod", sessionRef.current.escrow);
           if (body && typeof body.text === "string") {
             const dm: DmMsg = {
               id: env.id,
@@ -532,8 +537,17 @@ export function useBunny(mode: "user" | "admin") {
               name: cleanName(body.name) || "Guest",
               color: safeColor(body.color, env.from),
               media: cleanMedia(body.media),
+              editedAt: Number(body.editedAt) || undefined,
             };
-            setAllDms((prev) => (prev[dm.id] ? prev : { ...prev, [dm.id]: dm }));
+            const before = allDmsRef.current[dm.id];
+            if (before && dm.editedAt && (before.editedAt || 0) < dm.editedAt && before.text !== dm.text) {
+              addLog({ key: `dmedit:${dm.id}:${dm.editedAt}`, kind: "edit", scope: "direct", msgId: dm.id, authorId: dm.from, authorName: dm.name, before: before.text, after: dm.text, at: dm.editedAt });
+            }
+            setAllDms((prev) => {
+              const old = prev[dm.id];
+              if (old && (old.editedAt || 0) >= (dm.editedAt || 0)) return prev;
+              return { ...prev, [dm.id]: dm };
+            });
             know(env.from, dm.name, dm.color);
           }
         }
@@ -1091,6 +1105,44 @@ export function useBunny(mode: "user" | "admin") {
     [lookup, friends, contacts],  
   );
 
+  const editDirect = useCallback(
+    async (dm: DmMsg, text: string) => {
+      const me = idRef.current;
+      const clean = text.trim().slice(0, 2000);
+      if (!me || dm.from !== me.id || clean === dm.text || (!clean && !dm.media?.length)) return false;
+      const info = lookup(dm.to);
+      if (!info.box) {
+        setToast("Can't edit until they've been online again");
+        return false;
+      }
+      const editedAt = Date.now();
+      const p = profileRef.current;
+      const env = await seal(
+        { [me.id]: { x: me.box.x, y: me.box.y }, [dm.to]: info.box, mod: ESCROW_BOX_PUB },
+        { text: clean, name: p.name, color: p.color, media: dm.media, editedAt },
+      );
+      const body = JSON.stringify({ t: "dm", id: dm.id, from: me.id, to: dm.to, at: dm.at, fb: { x: me.box.x, y: me.box.y }, env });
+      publish(T.INBOX + dm.to + "/dm-" + dm.id, body, true);
+      publish(T.INBOX + me.id + "/dm-" + dm.id, body, true);
+      setDms((prev) => ({ ...prev, [dm.id]: { ...dm, text: clean, editedAt } }));
+      void sealLog({
+        key: `dmedit:${dm.id}:${editedAt}`,
+        kind: "edit",
+        scope: "direct",
+        msgId: dm.id,
+        authorId: dm.from,
+        authorName: dm.name,
+        before: dm.text,
+        after: clean,
+        actorId: me.id,
+        actorName: p.name,
+        at: editedAt,
+      });
+      return true;
+    },
+    [lookup], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const unsendDirect = useCallback((dm: DmMsg) => {
     const me = idRef.current;
     if (!me || dm.from !== me.id) return;
@@ -1395,6 +1447,7 @@ export function useBunny(mode: "user" | "admin") {
     openDirect,
     sendDirect,
     unsendDirect,
+    editDirect,
     ackWarning,
     restoreFromToken,
     ban,
