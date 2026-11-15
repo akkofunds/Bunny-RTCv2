@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AtSign, Ban, Hash, Megaphone, Search, Settings as SettingsIcon, ShieldCheck, TriangleAlert, Users, X } from "lucide-react";
+import { AtSign, Ban, Hash, LogOut, Megaphone, Search, Settings as SettingsIcon, ShieldCheck, TriangleAlert, Users, X } from "lucide-react";
 import { useBunny } from "@/lib/bunny/use-bunny";
 import { ACCENTS, PRESETS, safeWallpaperUrl } from "@/lib/bunny/types";
 import { AdminTag, Face, StarMark } from "./ui";
@@ -40,6 +40,15 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
     setRefract(!!brands?.some((b) => b.brand === "Chromium"));
     if (window.innerWidth < 860) setMembersOpen(false);
   }, []);
+
+  // /m holds 3s between fades; /h slides in for 5s.
+  const flash = bunny.flash;
+  const clearFlash = bunny.clearFlash;
+  useEffect(() => {
+    if (!flash) return;
+    const t = window.setTimeout(clearFlash, flash.style === "m" ? 4100 : 5600);
+    return () => window.clearTimeout(t);
+  }, [flash, clearFlash]);
 
   useEffect(() => {
     const unread = bunny.serverUnread + bunny.directUnread;
@@ -204,6 +213,46 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
       {menu ? <UserMenu bunny={bunny} target={menu} onClose={closeMenu} onMention={mention} /> : null}
       {settingsOpen ? <SettingsSheet bunny={bunny} onClose={() => setSettingsOpen(false)} /> : null}
       {bunny.toast ? <div className="toast lg">{bunny.toast}</div> : null}
+
+      {flash?.style === "m" ? (
+        <div className="flash-m" key={flash.id} role="alert" aria-live="assertive">
+          <div className="flash-card lg">
+            <span className="flash-from">Message from {flash.byName}</span>
+            <p>{flash.text}</p>
+          </div>
+        </div>
+      ) : null}
+      {flash?.style === "h" ? (
+        <div className="flash-h lg" key={flash.id} role="status" aria-live="polite">
+          <Megaphone size={15} />
+          <span>
+            <b>{flash.byName}:</b> {flash.text}
+          </span>
+        </div>
+      ) : null}
+
+      {bunny.kicked ? (
+        <div className="backdrop" style={{ background: "rgba(2,6,10,0.55)", zIndex: 60 }}>
+          <div className="modal lg" role="alertdialog" aria-labelledby="kick-title">
+            <div className="gate-icon">
+              <LogOut size={24} />
+            </div>
+            <h2 id="kick-title">You were kicked</h2>
+            <p style={{ margin: "0.5rem 0 0.8rem" }}>{bunny.kicked.byName} removed you from the room.</p>
+            {bunny.kicked.reason ? (
+              <div className="callout">
+                <LogOut size={16} />
+                <div>“{bunny.kicked.reason}”</div>
+              </div>
+            ) : null}
+            <div className="row" style={{ justifyContent: "flex-end", marginTop: "0.9rem" }}>
+              <button className="gbtn primary" type="button" onClick={() => window.location.reload()}>
+                Rejoin
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {bunny.warnings[0] ? (
         <div className="backdrop">

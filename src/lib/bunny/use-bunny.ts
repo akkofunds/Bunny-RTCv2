@@ -42,7 +42,11 @@ import {
   type Settings,
   type WallpaperRec,
   type WarnRec,
+  type RoomRec,
+  type FlashRec,
+  type KickRec,
 } from "./types";
+import { cleanMedia, packMedia, unpackMedia, type MediaRef, type Prepared } from "./media";
 
 export type Tab = "server" | "direct" | "mod";
 export type View = { tab: Tab; peer: string | null };
@@ -72,7 +76,8 @@ function chime(freq: number) {
   }
 }
 
-export const msgSigText = (m: Pick<Msg, "id" | "authorId" | "at" | "text">) => `${m.id}\n${m.authorId}\n${m.at}\n${m.text}`;
+export const msgSigText = (m: Pick<Msg, "id" | "authorId" | "at" | "text" | "media">) =>
+  `${m.id}\n${m.authorId}\n${m.at}\n${m.text}\n${(m.media || []).map((x) => x.id).join(",")}`;
 
 function parse<V>(payload: string): V | null {
   try {
@@ -113,6 +118,14 @@ export function useBunny(mode: "user" | "admin") {
   const [view, setViewState] = useState<View>({ tab: "server", peer: null });
   const [serverUnread, setServerUnread] = useState(0);
   const [toast, setToast] = useState("");
+  const [room, setRoom] = useState<RoomRec | null>(null);
+  const [flash, setFlash] = useState<FlashRec | null>(null);
+  const [kicked, setKicked] = useState<KickRec | null>(null);
+  const [modHistory, setModHistory] = useState<{ key: string; text: string; at: number; byName: string }[]>([]);
+  const lastSendRef = useRef(0);
+  const roomRef = useRef<RoomRec | null>(null);
+  roomRef.current = room;
+  const mediaWaitRef = useRef(new Map<string, { chunks: (string | undefined)[]; got: number; done: (ok: boolean) => void }>());
   const [loaded, setLoaded] = useState(false);
 
   const socketRef = useRef<BunnySocket | null>(null);
@@ -379,8 +392,10 @@ export function useBunny(mode: "user" | "admin") {
           raw.replyTo && typeof raw.replyTo.id === "string"
             ? { id: raw.replyTo.id.slice(0, 40), name: cleanName(raw.replyTo.name), text: String(raw.replyTo.text || "").slice(0, 120) }
             : undefined,
+        media: cleanMedia(raw.media),
         sig: typeof raw.sig === "string" ? raw.sig.slice(0, 200) : undefined,
       };
+      if (!msg.text.trim() && !msg.media) return;
       const prev = msgMap.get(msg.id);
       if (escrowReady && prev && msg.editedAt && prev.text !== msg.text) {
         addLog({
@@ -462,7 +477,7 @@ export function useBunny(mode: "user" | "admin") {
         if (!env || env.t !== "dm" || !ID_RE.test(env.id) || !USER_RE.test(env.from) || !USER_RE.test(env.to)) return;
         if (uid !== env.from && uid !== env.to) return;
         if (mine) {
-          const body = await open<{ text: string; name: string; color?: string }>(env.env, me.id, me.box);
+          const body = await open<{ text: string; name: string; color?: string; media?: unknown }>(env.env, me.id, me.box);
           if (body && typeof body.text === "string") {
             const peer = env.from === me.id ? env.to : env.from;
             const incoming = env.from !== me.id;
@@ -478,6 +493,7 @@ export function useBunny(mode: "user" | "admin") {
               text: body.text.slice(0, 2000),
               name: cleanName(body.name) || "Guest",
               color: safeColor(body.color, env.from),
+              media: cleanMedia(body.media),
             };
             const fresh = !seenDmRef.current.has(dm.id);
             seenDmRef.current.add(dm.id);
@@ -496,7 +512,7 @@ export function useBunny(mode: "user" | "admin") {
           }
         }
         if (escrowReady && sessionRef.current) {
-          const body = await open<{ text: string; name: string; color?: string }>(env.env, "mod", sessionRef.current.escrow);
+          const body = await open<{ text: string; name: string; color?: string; media?: unknown }>(env.env, "mod", sessionRef.current.escrow);
           if (body && typeof body.text === "string") {
             const dm: DmMsg = {
               id: env.id,
@@ -506,6 +522,7 @@ export function useBunny(mode: "user" | "admin") {
               text: body.text.slice(0, 2000),
               name: cleanName(body.name) || "Guest",
               color: safeColor(body.color, env.from),
+              media: cleanMedia(body.media),
             };
             setAllDms((prev) => (prev[dm.id] ? prev : { ...prev, [dm.id]: dm }));
             know(env.from, dm.name, dm.color);
@@ -565,8 +582,34 @@ export function useBunny(mode: "user" | "admin") {
 
     const handleMod = async (topic: string, key: string, payload: string) => {
       if (!payload) return guardEmpty(topic);
-      const rec = await verifyRecord<BanRec | WallpaperRec | AnnounceRec>(parse(payload));
+      const rec = await verifyRecord<BanRec | WallpaperRec | AnnounceRec | RoomRec | FlashRec | KickRec>(parse(payload));
       if (!rec) return;
+      if (escrowReady) {
+        const line =
+          rec.kind === "ban" ? `banned ${rec.targetName}` : rec.kind === "unban" ? `unbanned ${rec.targetName}` : rec.kind === "kick" ? `kicked ${rec.targetName}` :
+          rec.kind === "flash" ? `${rec.style === "m" ? "/m" : "/h"} “${rec.text}”` : rec.kind === "room" ? (rec.locked ? "locked chat" : rec.slowmode ? `slowmode ${rec.slowmode}s` : "room controls reset") :
+          rec.kind === "wallpaper" ? (rec.mode === "default" ? "reset the wallpaper" : "changed the wallpaper") : (rec as AnnounceRec).text ? "posted an announcement" : "cleared the announcement";
+        const hkey = `${rec.kind}:${rec.at}:${rec.by}`;
+        setModHistory((prev) => (prev.some((h) => h.key === hkey) ? prev : [{ key: hkey, text: line, at: rec.at, byName: rec.byName }, ...prev].slice(0, 80)));
+      }
+      if (rec.kind === "flash" && key === "flash") {
+        if (Date.now() - rec.at < 20000 && typeof rec.text === "string") setFlash({ ...rec, text: rec.text.slice(0, 200) });
+        return;
+      }
+      if (rec.kind === "kick" && key === "kick") {
+        if (rec.target === me.id && Date.now() - rec.at < 20000 && !adminsRef.current[me.id]) {
+          setKicked(rec);
+          socketRef.current?.stop();
+          setOnline(false);
+          setStatus("Kicked");
+        }
+        return;
+      }
+      if (rec.kind === "room" && key === "room") {
+        setRoom((prev) => (prev && prev.at >= rec.at ? prev : { ...rec, slowmode: Math.max(0, Math.min(3600, Number(rec.slowmode) || 0)), locked: !!rec.locked }));
+        guardRemember(topic, payload);
+        return;
+      }
       if ((rec.kind === "ban" || rec.kind === "unban") && key === `ban-${rec.target}`) {
         setBans((prev) => (prev[rec.target] && prev[rec.target].at >= rec.at ? prev : { ...prev, [rec.target]: rec }));
         know(rec.target, rec.targetName);
@@ -604,6 +647,16 @@ export function useBunny(mode: "user" | "admin") {
         const [uid, item] = topic.slice(T.INBOX.length).split("/");
         if (!uid || !item) return;
         return void handleInbox(uid, item, payload);
+      }
+      if (topic.startsWith(T.MEDIA)) {
+        const [mid, idx] = topic.slice(T.MEDIA.length).split("/");
+        const wait = mediaWaitRef.current.get(mid);
+        const i = Number(idx);
+        if (!wait || !payload || !Number.isInteger(i) || i < 0 || i >= wait.chunks.length || wait.chunks[i]) return;
+        wait.chunks[i] = payload;
+        wait.got += 1;
+        if (wait.got === wait.chunks.length) wait.done(true);
+        return;
       }
       if (topic.startsWith(T.MODLOG) && escrowReady && payload && sessionRef.current) {
         const sealed = parse<Sealed>(payload);
@@ -779,17 +832,32 @@ export function useBunny(mode: "user" | "admin") {
 
   /* ---------- chat actions ---------- */
   const sendMessage = useCallback(
-    async (text: string, replyTo?: Msg) => {
+    async (text: string, replyTo?: Msg, media?: MediaRef[]) => {
       const me = idRef.current;
       const clean = text.trim().slice(0, 2000);
-      if (!me || !clean || !socketRef.current) return false;
+      if (!me || (!clean && !media?.length) || !socketRef.current) return false;
+      const r = roomRef.current;
+      const staff = !!sessionRef.current;
+      if (r?.locked && !staff) {
+        setToast("Chat is locked by an admin");
+        return false;
+      }
+      if (r?.slowmode && !staff) {
+        const wait = lastSendRef.current + r.slowmode * 1000 - Date.now();
+        if (wait > 0) {
+          setToast(`Slowmode is on. Wait ${Math.ceil(wait / 1000)}s`);
+          return false;
+        }
+      }
+      lastSendRef.current = Date.now();
       const msg: Msg = {
         id: `${Date.now().toString(36)}${randomId(3)}`.slice(0, 24),
         authorId: me.id,
         name: profileRef.current.name,
         text: clean,
         at: Date.now(),
-        replyTo: replyTo ? { id: replyTo.id, name: replyTo.name, text: replyTo.text.slice(0, 120) } : undefined,
+        replyTo: replyTo ? { id: replyTo.id, name: replyTo.name, text: replyTo.text.slice(0, 120) || "Attachment" } : undefined,
+        media: media?.length ? media : undefined,
       };
       if (sessionRef.current) msg.sig = await signText(me.sign, msgSigText(msg));
       const body = JSON.stringify(msg);
@@ -829,6 +897,7 @@ export function useBunny(mode: "user" | "admin") {
     const me = idRef.current;
     if (!me) return;
     publish(T.HISTORY + msg.id, "", true);
+    for (const m of msg.media || []) for (let i = 0; i < m.n; i++) publish(T.MEDIA + m.id + "/" + i, "", true);
     void sealLog({
       key: `del:${msg.id}`,
       kind: "delete",
@@ -836,7 +905,7 @@ export function useBunny(mode: "user" | "admin") {
       msgId: msg.id,
       authorId: msg.authorId,
       authorName: msg.name,
-      before: msg.text,
+      before: msg.text || (msg.media?.length ? `[${msg.media.length} attachment${msg.media.length > 1 ? "s" : ""}]` : ""),
       actorId: me.id,
       actorName: profileRef.current.name,
       at: Date.now(),
@@ -958,10 +1027,10 @@ export function useBunny(mode: "user" | "admin") {
   );
 
   const sendDirect = useCallback(
-    async (peer: string, text: string) => {
+    async (peer: string, text: string, media?: MediaRef[]) => {
       const me = idRef.current;
       const clean = text.trim().slice(0, 2000);
-      if (!me || !clean) return false;
+      if (!me || (!clean && !media?.length)) return false;
       const info = lookup(peer);
       if (!info.box) {
         setToast("They need to come online once before you can message them");
@@ -970,12 +1039,12 @@ export function useBunny(mode: "user" | "admin") {
       const at = Date.now();
       const id = `${at.toString(36)}${randomId(4)}`.slice(0, 24);
       const p = profileRef.current;
-      const env = await seal({ [me.id]: { x: me.box.x, y: me.box.y }, [peer]: info.box, mod: ESCROW_BOX_PUB }, { text: clean, name: p.name, color: p.color });
+      const env = await seal({ [me.id]: { x: me.box.x, y: me.box.y }, [peer]: info.box, mod: ESCROW_BOX_PUB }, { text: clean, name: p.name, color: p.color, media });
       const body = JSON.stringify({ t: "dm", id, from: me.id, to: peer, at, fb: { x: me.box.x, y: me.box.y }, env });
       publish(T.INBOX + peer + "/dm-" + id, body, true);
       publish(T.INBOX + me.id + "/dm-" + id, body, true);
       seenDmRef.current.add(id);
-      setDms((prev) => ({ ...prev, [id]: { id, from: me.id, to: peer, at, text: clean, name: p.name, color: p.color } }));
+      setDms((prev) => ({ ...prev, [id]: { id, from: me.id, to: peer, at, text: clean, name: p.name, color: p.color, media } }));
       if (!friends[peer] && !contacts[peer]) {
         setContacts((prev) => ({ ...prev, [peer]: { id: peer, name: info.name, color: info.color, avatar: info.avatar, box: info.box!, since: at } }));
       }
@@ -989,6 +1058,7 @@ export function useBunny(mode: "user" | "admin") {
     if (!me || dm.from !== me.id) return;
     publish(T.INBOX + dm.to + "/dm-" + dm.id, "", true);
     publish(T.INBOX + dm.from + "/dm-" + dm.id, "", true);
+    for (const m of dm.media || []) for (let i = 0; i < m.n; i++) publish(T.MEDIA + m.id + "/" + i, "", true);
     setDms((prev) => {
       const next = { ...prev };
       delete next[dm.id];
@@ -1001,7 +1071,7 @@ export function useBunny(mode: "user" | "admin") {
       msgId: dm.id,
       authorId: dm.from,
       authorName: dm.name,
-      before: dm.text,
+      before: dm.text || (dm.media?.length ? "[attachment]" : ""),
       actorId: me.id,
       actorName: profileRef.current.name,
       at: Date.now(),
@@ -1026,13 +1096,126 @@ export function useBunny(mode: "user" | "admin") {
   }, []);
 
   /* ---------- admin actions ---------- */
-  const modPublish = useCallback(async (topic: string, payload: object) => {
+  const modPublish = useCallback(async (topic: string, payload: object, retained = true) => {
     const me = idRef.current;
     const sess = sessionRef.current;
     if (!me || !sess) return false;
     const rec = await signRecord(me.sign, sess.cert, payload);
-    publish(topic, JSON.stringify(rec), true);
+    publish(topic, JSON.stringify(rec), retained);
     return true;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const flashAll = useCallback(
+    async (text: string, style: "m" | "h" = "m") => {
+      const me = idRef.current;
+      const clean = text.trim().slice(0, 200);
+      if (!me || !clean) return false;
+      const rec: FlashRec = { kind: "flash", id: randomId(6), style, text: clean, at: Date.now(), by: me.id, byName: profileRef.current.name };
+      return modPublish(T.MOD + "flash", rec, false);
+    },
+    [modPublish],
+  );
+
+  const kick = useCallback(
+    async (target: string, targetName: string, reason: string) => {
+      const me = idRef.current;
+      if (!me || target === me.id) return;
+      const rec: KickRec = { kind: "kick", target, targetName, reason: reason.slice(0, 200), at: Date.now(), by: me.id, byName: profileRef.current.name };
+      if (await modPublish(T.MOD + "kick", rec, false)) setToast(`${targetName} was kicked`);
+    },
+    [modPublish],
+  );
+
+  const setRoomControls = useCallback(
+    async (patch: { slowmode?: number; locked?: boolean }) => {
+      const me = idRef.current;
+      if (!me) return;
+      const cur = roomRef.current;
+      const rec: RoomRec = {
+        kind: "room",
+        slowmode: patch.slowmode ?? cur?.slowmode ?? 0,
+        locked: patch.locked ?? cur?.locked ?? false,
+        at: Date.now(),
+        by: me.id,
+        byName: profileRef.current.name,
+      };
+      if (await modPublish(T.MOD + "room", rec)) {
+        setToast(patch.locked !== undefined ? (rec.locked ? "Chat locked" : "Chat unlocked") : rec.slowmode ? `Slowmode set to ${rec.slowmode}s` : "Slowmode off");
+      }
+    },
+    [modPublish],
+  );
+
+  /** Admin: delete the newest n server messages (logged like any delete). */
+  const clearRecent = useCallback((n: number) => {
+    const me = idRef.current;
+    if (!me) return 0;
+    const list = [...msgMapRef.current.values()].sort((a, b) => b.at - a.at).slice(0, Math.max(1, Math.min(100, n)));
+    for (const msg of list) {
+      publish(T.HISTORY + msg.id, "", true);
+      for (const m of msg.media || []) for (let i = 0; i < m.n; i++) publish(T.MEDIA + m.id + "/" + i, "", true);
+      void sealLog({
+        key: `del:${msg.id}`,
+        kind: "delete",
+        scope: "server",
+        msgId: msg.id,
+        authorId: msg.authorId,
+        authorName: msg.name,
+        before: msg.text || "[attachment]",
+        actorId: me.id,
+        actorName: profileRef.current.name,
+        at: Date.now(),
+      });
+    }
+    setToast(`Cleared ${list.length} message${list.length === 1 ? "" : "s"}`);
+    return list.length;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ---------- media ---------- */
+  const uploadMedia = useCallback(async (items: Prepared[], encrypt: boolean, onProgress?: (done: number, total: number) => void) => {
+    const packed = await Promise.all(items.map((p) => packMedia(p, encrypt)));
+    const total = packed.reduce((n, p) => n + p.chunks.length, 0);
+    let done = 0;
+    for (const { ref, chunks } of packed) {
+      for (let i = 0; i < chunks.length; i++) {
+        if (!socketRef.current?.connected) throw new Error("Lost connection while uploading");
+        publish(T.MEDIA + ref.id + "/" + i, chunks[i], true);
+        done += 1;
+        onProgress?.(done, total);
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    }
+    return packed.map((p) => p.ref);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const mediaCache = useRef(new Map<string, Promise<string>>());
+  const loadMedia = useCallback((ref: MediaRef) => {
+    const hit = mediaCache.current.get(ref.id);
+    if (hit) return hit;
+    const job = new Promise<string>((resolve, reject) => {
+      const topic = T.MEDIA + ref.id + "/+";
+      const wait = {
+        chunks: new Array<string | undefined>(ref.n).fill(undefined),
+        got: 0,
+        done: (ok: boolean) => {
+          window.clearTimeout(timer);
+          mediaWaitRef.current.delete(ref.id);
+          socketRef.current?.unwatch(topic);
+          if (!ok) return reject(new Error("Attachment unavailable"));
+          unpackMedia(ref, wait.chunks as string[]).then(resolve, reject);
+        },
+      };
+      const timer = window.setTimeout(() => wait.done(false), 30000);
+      mediaWaitRef.current.set(ref.id, wait);
+      const start = () => {
+        if (socketRef.current?.connected) socketRef.current.watch(topic);
+        else window.setTimeout(start, 500);
+      };
+      start();
+    });
+    job.catch(() => mediaCache.current.delete(ref.id));
+    mediaCache.current.set(ref.id, job);
+    return job;
   }, []);  
 
   const ban = useCallback(
@@ -1160,6 +1343,17 @@ export function useBunny(mode: "user" | "admin") {
     warn,
     setGlobalWallpaper,
     setAnnouncement,
+    room,
+    flash,
+    clearFlash: () => setFlash(null),
+    kicked,
+    modHistory,
+    flashAll,
+    kick,
+    setRoomControls,
+    clearRecent,
+    uploadMedia,
+    loadMedia,
   };
 }
 

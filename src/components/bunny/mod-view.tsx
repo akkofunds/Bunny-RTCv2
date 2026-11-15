@@ -1,92 +1,208 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Ban, Image as ImageIcon, Megaphone, MessagesSquare, RotateCcw, ScrollText, Search, ShieldCheck, TriangleAlert, Users } from "lucide-react";
+import { ArrowLeft, Ban, Eraser, Image as ImageIcon, LayoutGrid, Megaphone, MessagesSquare, MoreHorizontal, RotateCcw, ScrollText, Search, ShieldCheck, TriangleAlert, Users, Zap } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import { PRESETS, threadKey } from "@/lib/bunny/types";
-import { AdminTag, Face, ago, shrinkWallpaper, timeLabel } from "./ui";
+import { AdminTag, Face, Toggle, ago, shrinkWallpaper, timeLabel } from "./ui";
+import { COMMANDS } from "./commands";
 import type { MenuTarget } from "./user-menu";
 
 type ModTab = "overview" | "members" | "logs" | "dms" | "server";
 
 export function ModView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: MenuTarget) => void }) {
   const [tab, setTab] = useState<ModTab>("overview");
-  const logs = useMemo(() => Object.values(bunny.logs).sort((a, b) => b.at - a.at), [bunny.logs]);
-  const activeBans = Object.values(bunny.bans).filter((b) => b.kind === "ban" && !bunny.admins[b.target]);
-  const warns = Object.values(bunny.warnsIssued).sort((a, b) => b.at - a.at);
-  const dmCount = Object.keys(bunny.allDms).length;
-
   const tabs: { id: ModTab; label: string; icon: typeof Users }[] = [
-    { id: "overview", label: "Overview", icon: ShieldCheck },
+    { id: "overview", label: "Overview", icon: LayoutGrid },
     { id: "members", label: "Members", icon: Users },
     { id: "logs", label: "Deleted & edits", icon: ScrollText },
-    { id: "dms", label: "Direct messages", icon: MessagesSquare },
-    { id: "server", label: "Wallpaper & notice", icon: ImageIcon },
+    { id: "dms", label: "DMs", icon: MessagesSquare },
+    { id: "server", label: "Look", icon: ImageIcon },
   ];
 
   return (
     <section className="panel lg-panel" aria-label="Admin panel">
       <div className="panel-head">
-        <span className="hash" style={{ color: "#ffcf5c" }}>
+        <span className="hash gold">
           <ShieldCheck size={18} />
         </span>
         <div className="grow">
-          <h2 style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
-            Moderation <AdminTag />
-          </h2>
-          <p>Signed actions. Everyone's app checks them against the admin key.</p>
+          <h2>Admin panel</h2>
+          <p>Signed in as admin · actions are verified on every device</p>
         </div>
       </div>
-      <div className="mod-tabs">
+      <div className="tabbar" role="tablist" aria-label="Admin sections">
         {tabs.map((t) => (
-          <button key={t.id} type="button" className={`seg ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)} style={{ flex: "none" }}>
+          <button key={t.id} type="button" role="tab" aria-label={t.label} aria-selected={tab === t.id} className="tab" onClick={() => setTab(t.id)}>
             <t.icon size={15} />
-            {t.label}
+            <span>{t.label}</span>
           </button>
         ))}
       </div>
       <div className="mod-body">
-        {tab === "overview" ? (
-          <>
-            <div className="stats">
-              <div className="stat">
-                <b>{bunny.people.length}</b>
-                <span>Online now</span>
-              </div>
-              <div className="stat">
-                <b>{bunny.messages.length}</b>
-                <span>Messages in #lounge</span>
-              </div>
-              <div className="stat">
-                <b>{activeBans.length}</b>
-                <span>Active bans</span>
-              </div>
-              <div className="stat">
-                <b>{warns.length}</b>
-                <span>Warnings issued</span>
-              </div>
-              <div className="stat">
-                <b>{logs.length}</b>
-                <span>Logged deletes & edits</span>
-              </div>
-              <div className="stat">
-                <b>{dmCount}</b>
-                <span>Direct messages seen</span>
-              </div>
-            </div>
-            <div className="group-title">Recent activity</div>
-            <div className="group">
-              {logs.slice(0, 5).map((l) => (
-                <LogRow key={l.key} bunny={bunny} log={l} />
-              ))}
-              {logs.length === 0 ? <div className="empty">Deleted and edited messages will appear here.</div> : null}
-            </div>
-          </>
-        ) : null}
+        {tab === "overview" ? <Overview bunny={bunny} /> : null}
         {tab === "members" ? <Members bunny={bunny} openMenu={openMenu} /> : null}
         {tab === "logs" ? <Logs bunny={bunny} /> : null}
         {tab === "dms" ? <Dms bunny={bunny} /> : null}
         {tab === "server" ? <ServerLook bunny={bunny} /> : null}
       </div>
     </section>
+  );
+}
+
+function Overview({ bunny }: { bunny: Bunny }) {
+  const [text, setText] = useState("");
+  const [clearN, setClearN] = useState("10");
+  const [confirmClear, setConfirmClear] = useState(false);
+  const logs = Object.values(bunny.logs);
+  const activeBans = Object.values(bunny.bans).filter((b) => b.kind === "ban" && !bunny.admins[b.target]);
+  const slow = bunny.room?.slowmode || 0;
+  return (
+    <>
+      <div className="stats">
+        <div className="stat">
+          <b>{bunny.people.length}</b>
+          <span>Online</span>
+        </div>
+        <div className="stat">
+          <b>{bunny.messages.length}</b>
+          <span>Messages</span>
+        </div>
+        <div className="stat">
+          <b>{activeBans.length}</b>
+          <span>Bans</span>
+        </div>
+        <div className="stat">
+          <b>{Object.keys(bunny.warnsIssued).length}</b>
+          <span>Warnings</span>
+        </div>
+        <div className="stat">
+          <b>{logs.length}</b>
+          <span>Logged changes</span>
+        </div>
+      </div>
+
+      <div className="group-title">Broadcast</div>
+      <div className="group">
+        <form
+          className="opt stack"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (await bunny.flashAll(text, "m")) {
+              bunny.say("Message flashed to everyone");
+              setText("");
+            }
+          }}
+        >
+          <span className="hint">Flash pops up in the middle of everyone's screen for 3 seconds. Hint slides in at the top.</span>
+          <input className="input" value={text} maxLength={200} placeholder="Server restarting in 5 minutes!" onChange={(e) => setText(e.target.value)} aria-label="Broadcast text" />
+          <div className="row">
+            <button className="gbtn primary" type="submit" disabled={!text.trim()}>
+              <Zap size={15} /> Flash · /m
+            </button>
+            <button
+              className="gbtn"
+              type="button"
+              disabled={!text.trim()}
+              onClick={async () => {
+                if (await bunny.flashAll(text, "h")) {
+                  bunny.say("Hint sent");
+                  setText("");
+                }
+              }}
+            >
+              <Megaphone size={15} /> Hint · /h
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="group-title">Room controls</div>
+      <div className="group">
+        <div className="opt">
+          <div className="txt">
+            <strong>Lock chat</strong>
+            <span>Only admins can send in #lounge.</span>
+          </div>
+          <Toggle label="Lock chat" on={!!bunny.room?.locked} onChange={(v) => void bunny.setRoomControls({ locked: v })} />
+        </div>
+        <div className="opt">
+          <div className="txt">
+            <strong>Slowmode</strong>
+            <span>Time between messages for each person.</span>
+          </div>
+          <div className="choices" role="group" aria-label="Slowmode">
+            {[0, 5, 15, 30, 60].map((n) => (
+              <button key={n} type="button" aria-pressed={slow === n} onClick={() => void bunny.setRoomControls({ slowmode: n })}>
+                {n ? `${n}s` : "Off"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="opt">
+          <div className="txt">
+            <strong>Clear chat</strong>
+            <span>Delete the newest messages. They still show up in the logs.</span>
+          </div>
+          {confirmClear ? (
+            <div className="row">
+              <button className="gbtn sm" type="button" onClick={() => setConfirmClear(false)}>
+                Cancel
+              </button>
+              <button
+                className="gbtn sm danger"
+                type="button"
+                onClick={() => {
+                  bunny.clearRecent(Number(clearN));
+                  setConfirmClear(false);
+                }}
+              >
+                Delete {clearN}
+              </button>
+            </div>
+          ) : (
+            <div className="row">
+              <div className="choices" role="group" aria-label="How many">
+                {["10", "25", "50"].map((n) => (
+                  <button key={n} type="button" aria-pressed={clearN === n} onClick={() => setClearN(n)}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <button className="gbtn sm danger" type="button" onClick={() => setConfirmClear(true)}>
+                <Eraser size={14} /> Clear
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="group-title">Recent admin actions</div>
+      <div className="group">
+        {bunny.modHistory.slice(0, 8).map((h) => (
+          <div className="opt" key={h.key}>
+            <div className="txt">
+              <strong>
+                {h.byName} {h.text}
+              </strong>
+            </div>
+            <span className="muted">{ago(h.at)}</span>
+          </div>
+        ))}
+        {bunny.modHistory.length === 0 ? <div className="empty">Actions you and other admins take will show up here.</div> : null}
+      </div>
+
+      <div className="group-title">Chat commands</div>
+      <div className="group cmd-sheet">
+        {COMMANDS.map((c) => (
+          <div className="cmd-line" key={c.name}>
+            <code>
+              /{c.name}
+              {c.args ? <i> {c.args}</i> : null}
+            </code>
+            <span>{c.help}</span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -185,7 +301,7 @@ function Members({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: MenuTarget) 
           const w = warnCount(p.id);
           const ban = bunny.bans[p.id];
           return (
-            <div className="opt" key={p.id}>
+            <div className="opt keep" key={p.id}>
               <Face avatar={p.avatar} color={p.color} label={p.name} status={p.online ? p.status : undefined} size="2.2rem" />
               <div className="txt">
                 <strong style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
@@ -210,14 +326,16 @@ function Members({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: MenuTarget) 
                   </button>
                 ) : (
                   <button
-                    className="gbtn sm"
+                    className="gbtn sm icon"
                     type="button"
+                    aria-label={`Manage ${p.name}`}
+                    title="Warn, kick or ban"
                     onClick={(e) => {
                       const r = e.currentTarget.getBoundingClientRect();
                       openMenu({ id: p.id, x: r.right - 264, y: r.bottom + 6 });
                     }}
                   >
-                    <TriangleAlert size={13} /> Actions
+                    <MoreHorizontal size={16} />
                   </button>
                 )
               ) : null}

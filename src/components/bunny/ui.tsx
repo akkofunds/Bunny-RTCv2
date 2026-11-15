@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Shield } from "lucide-react";
 import type { Status } from "@/lib/bunny/types";
 
 /** The platform mark: a rounded five-point star. */
@@ -41,7 +40,6 @@ export function Face({
 export function AdminTag() {
   return (
     <span className="tag" title="Verified Bunny RTC admin">
-      <Shield size={10} strokeWidth={2.6} />
       Admin
     </span>
   );

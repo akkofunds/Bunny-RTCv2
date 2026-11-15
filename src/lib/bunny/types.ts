@@ -1,4 +1,5 @@
 import type { Cert, Point, PrivJwk } from "./crypto";
+import type { MediaRef } from "./media";
 
 const LIVE_BROKER = "wss://broker.emqx.io:8084/mqtt";
 /** Dev builds only: allow a local broker for testing. Production always uses the live relay. */
@@ -29,6 +30,7 @@ export const T = {
   MOD: `${NS}/public/mod/`,
   INBOX: `${NS}/v2/inbox/`,
   MODLOG: `${NS}/v2/modlog/`,
+  MEDIA: `${NS}/v2/media/`,
 } as const;
 
 export type Status = "online" | "idle" | "dnd";
@@ -42,6 +44,7 @@ export type Msg = {
   editedAt?: number;
   reactions?: Record<string, string[]>;
   replyTo?: { id: string; name: string; text: string };
+  media?: MediaRef[];
   sig?: string;
 };
 
@@ -66,6 +69,7 @@ export type DmMsg = {
   text: string;
   name: string;
   color?: string;
+  media?: MediaRef[];
 };
 
 export type Friend = { id: string; name: string; color: string; avatar?: string; box: Point; since: number };
@@ -88,6 +92,9 @@ export type ModLog = {
 export type BanRec = { kind: "ban" | "unban"; target: string; targetName: string; reason: string; at: number; by: string; byName: string };
 export type WarnRec = { kind: "warn"; id: string; target: string; targetName: string; reason: string; at: number; by: string; byName: string };
 export type WallpaperRec = { kind: "wallpaper"; mode: "default" | "preset" | "image"; value?: string; at: number; by: string; byName: string };
+export type RoomRec = { kind: "room"; slowmode: number; locked: boolean; at: number; by: string; byName: string };
+export type FlashRec = { kind: "flash"; id: string; style: "m" | "h"; text: string; at: number; by: string; byName: string };
+export type KickRec = { kind: "kick"; target: string; targetName: string; reason: string; at: number; by: string; byName: string };
 export type AnnounceRec = { kind: "announce"; text: string; at: number; by: string; byName: string };
 
 export type AdminSession = { id: string; cert: Cert; escrow: PrivJwk };

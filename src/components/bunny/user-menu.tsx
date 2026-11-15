@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { AtSign, Ban, Ban as BanIcon, Check, Clock, Copy, MessageCircle, ShieldAlert, ShieldCheck, TriangleAlert, UserMinus, UserPlus } from "lucide-react";
+import { AtSign, Ban, Ban as BanIcon, Check, Clock, Copy, LogOut, MessageCircle, ShieldAlert, ShieldCheck, TriangleAlert, UserMinus, UserPlus } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import { AdminTag, Face, Floating } from "./ui";
 
 export type MenuTarget = { id: string; x: number; y: number };
 
 export function UserMenu({ bunny, target, onClose, onMention }: { bunny: Bunny; target: MenuTarget; onClose: () => void; onMention?: (name: string) => void }) {
-  const [mode, setMode] = useState<"main" | "warn" | "ban">("main");
+  const [mode, setMode] = useState<"main" | "warn" | "ban" | "kick">("main");
   const [reason, setReason] = useState("");
   const info = bunny.lookup(target.id);
   const self = target.id === bunny.identity?.id;
@@ -133,6 +133,11 @@ export function UserMenu({ bunny, target, onClose, onMention }: { bunny: Bunny; 
               <button className="menu-item warn" type="button" onClick={() => setMode("warn")}>
                 <TriangleAlert size={17} /> Warn user
               </button>
+              {info.online ? (
+                <button className="menu-item warn" type="button" onClick={() => setMode("kick")}>
+                  <LogOut size={17} /> Kick from room
+                </button>
+              ) : null}
               {banned ? (
                 <button
                   className="menu-item"
@@ -159,19 +164,20 @@ export function UserMenu({ bunny, target, onClose, onMention }: { bunny: Bunny; 
             if (mode === "warn") {
               if (!reason.trim()) return;
               void bunny.warn(target.id, info.name, reason);
-            } else void bunny.ban(target.id, info.name, reason || "Broke the server rules");
+            } else if (mode === "kick") void bunny.kick(target.id, info.name, reason);
+            else void bunny.ban(target.id, info.name, reason || "Broke the server rules");
             onClose();
           }}
         >
           <span className="label" style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-            <ShieldAlert size={13} /> {mode === "warn" ? `Warn ${info.name}` : `Ban ${info.name}`}
+            <ShieldAlert size={13} /> {mode === "warn" ? `Warn ${info.name}` : mode === "kick" ? `Kick ${info.name}` : `Ban ${info.name}`}
           </span>
           <textarea
             className="input"
             autoFocus
             maxLength={300}
             value={reason}
-            placeholder={mode === "warn" ? "What should they know?" : "Reason (shown to them)"}
+            placeholder={mode === "warn" ? "What should they know?" : "Reason (optional, shown to them)"}
             onChange={(e) => setReason(e.target.value)}
           />
           <div className="row" style={{ justifyContent: "flex-end" }}>
@@ -179,7 +185,7 @@ export function UserMenu({ bunny, target, onClose, onMention }: { bunny: Bunny; 
               Back
             </button>
             <button className={mode === "ban" ? "gbtn sm danger" : "gbtn sm primary"} type="submit" disabled={mode === "warn" && !reason.trim()}>
-              {mode === "warn" ? "Send warning" : "Ban"}
+              {mode === "warn" ? "Send warning" : mode === "kick" ? "Kick" : "Ban"}
             </button>
           </div>
         </form>

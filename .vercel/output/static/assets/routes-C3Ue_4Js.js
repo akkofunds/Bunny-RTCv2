@@ -1,0 +1,1 @@
+import{t as e}from"./room-By7VnMUF.js";import{r as t}from"./index-BtPILYNn.js";var n=t(),r=()=>(0,n.jsx)(e,{mode:`user`});export{r as component};

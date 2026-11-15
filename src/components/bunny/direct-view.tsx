@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Inbox, Lock, MessageCircle, MoreHorizontal, Send, Trash2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Check, Inbox, Lock, MessageCircle, MoreHorizontal, Paperclip, Send, Trash2, UserPlus, X } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import { RichText } from "./rich-text";
 import { AdminTag, Face, ago, dayLabel, timeLabel } from "./ui";
 import type { MenuTarget } from "./user-menu";
+import { ACCEPT, AttachTray, MediaGrid, useAttachments } from "./media-view";
 
 export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: MenuTarget) => void }) {
   const me = bunny.identity?.id || "";
@@ -33,9 +34,29 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
   const blocked = !!peer && bunny.blocked.includes(peer);
   const banned = bunny.isBanned(me);
 
+  const attach = useAttachments(bunny.say);
+  const [progress, setProgress] = useState<number | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
   async function send() {
-    if (!peer || !draft.trim()) return;
-    if (await bunny.sendDirect(peer, draft)) setDraft("");
+    if (!peer || (!draft.trim() && !attach.items.length) || progress !== null) return;
+    let media;
+    if (attach.items.length) {
+      try {
+        setProgress(0);
+        media = await bunny.uploadMedia(attach.items, true, (d, t) => setProgress(d / t));
+      } catch (e) {
+        bunny.say(e instanceof Error ? e.message : "Upload failed");
+        setProgress(null);
+        return;
+      }
+    }
+    const ok = await bunny.sendDirect(peer, draft, media);
+    setProgress(null);
+    if (ok) {
+      setDraft("");
+      attach.clear();
+    }
   }
 
   return (
@@ -93,7 +114,7 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
                   </strong>
                   <span className="convo-last">
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {c.last ? `${c.last.from === me ? "You: " : ""}${c.last.text}` : p.online ? "Online · say hi" : "Offline"}
+                      {c.last ? `${c.last.from === me ? "You: " : ""}${c.last.text || (c.last.media?.[0]?.kind === "video" ? "Sent a video" : "Sent a photo")}` : p.online ? "Online · say hi" : "Offline"}
                     </span>
                     {c.last ? <em>{ago(c.last.at)}</em> : null}
                   </span>
@@ -149,8 +170,9 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
                 return (
                   <div key={d.id} style={{ display: "contents" }}>
                     {newDay ? <div className="day">{dayLabel(d.at)}</div> : gap ? <div className="bubble-gap" /> : null}
-                    <div className={`bubble ${mine ? "mine" : ""}`}>
-                      <RichText text={d.text} selfName={bunny.profile.name} />
+                    <div className={`bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""}`}>
+                      {d.media ? <MediaGrid media={d.media} load={bunny.loadMedia} /> : null}
+                      {d.text ? <RichText text={d.text} selfName={bunny.profile.name} /> : null}
                       <time>{timeLabel(d.at, bunny.settings.clock24)}</time>
                       {mine ? (
                         <button className="tiny unsend" type="button" aria-label="Unsend message" onClick={() => bunny.unsendDirect(d)} style={{ color: "var(--color-ink)" }}>
@@ -169,6 +191,7 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
               ) : null}
             </div>
             <div className="composer-wrap" style={{ paddingTop: "0.5rem" }}>
+              <AttachTray items={attach.items} onRemove={attach.remove} progress={progress} />
               <form
                 className="composer lg"
                 onSubmit={(e) => {
@@ -176,17 +199,46 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
                   void send();
                 }}
               >
+                <button
+                  className="gbtn icon"
+                  type="button"
+                  aria-label="Attach images or video"
+                  title="Attach images or video"
+                  disabled={blocked || banned || !bunny.online || progress !== null}
+                  onClick={() => fileRef.current?.click()}
+                  style={{ background: "transparent", boxShadow: "none" }}
+                >
+                  <Paperclip size={19} />
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept={ACCEPT}
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    void attach.add(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
                 <input
                   ref={inputRef}
+                  onPaste={(e) => {
+                    const files = [...e.clipboardData.files];
+                    if (files.length) {
+                      e.preventDefault();
+                      void attach.add(files);
+                    }
+                  }}
                   value={draft}
                   maxLength={2000}
-                  style={{ paddingLeft: "0.8rem" }}
+                  style={{ paddingLeft: "0.2rem" }}
                   disabled={blocked || banned || !bunny.online}
                   placeholder={blocked ? "You blocked this person" : banned ? "You're banned" : `Message ${info.name}`}
                   aria-label={`Message ${info.name}`}
                   onChange={(e) => setDraft(e.target.value)}
                 />
-                <button className="send" type="submit" disabled={!draft.trim() || blocked || banned || !bunny.online} aria-label="Send">
+                <button className="send" type="submit" disabled={(!draft.trim() && !attach.items.length) || blocked || banned || !bunny.online || progress !== null} aria-label="Send">
                   <Send size={18} />
                 </button>
               </form>

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Copy, CornerUpLeft, Hash, Pencil, Search, Send, Smile, SmilePlus, Trash2, X } from "lucide-react";
+import { ArrowDown, Copy, CornerUpLeft, Hash, Lock, Paperclip, Pencil, Search, Send, Smile, SmilePlus, Terminal, Timer, Trash2, X } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import type { Msg } from "@/lib/bunny/types";
 import { RichText, mentions } from "./rich-text";
 import { AdminTag, Face, Floating, dayLabel, timeLabel } from "./ui";
 import type { MenuTarget } from "./user-menu";
+import { ACCEPT, AttachTray, MediaGrid, useAttachments } from "./media-view";
+import { matchCommands, runCommand } from "./commands";
 
 const QUICK = ["🔥", "😂", "❤️", "👍", "👀", "⭐"];
 const EMOJIS = [
@@ -85,13 +87,58 @@ export function ServerView({
     return () => document.removeEventListener("mousedown", onDown);
   }, [picker]);
 
+  const canCommand = bunny.adminMode && !!bunny.session;
+  const suggestions = canCommand ? matchCommands(draft) : [];
+  const showCommands = suggestions.length > 0 && !draft.includes("\n");
+  const staff = !!bunny.session;
+  const locked = !!bunny.room?.locked && !staff;
+  const slow = staff ? 0 : bunny.room?.slowmode || 0;
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (cooldownUntil <= Date.now()) return;
+    const t = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(t);
+  }, [cooldownUntil]);
+  const cooldown = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
+
+  const attach = useAttachments(bunny.say);
+  const [progress, setProgress] = useState<number | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [cmdIndex, setCmdIndex] = useState(0);
+
   async function send() {
-    if (!draft.trim() || banned) return;
-    const ok = await bunny.sendMessage(draft, replyTo || undefined);
+    if (banned || progress !== null) return;
+    if (canCommand && draft.trim().startsWith("/") && !attach.items.length) {
+      const res = await runCommand(bunny, draft);
+      bunny.say(res.message);
+      if (res.ok) setDraft("");
+      return;
+    }
+    if (!draft.trim() && !attach.items.length) return;
+    let media;
+    if (attach.items.length) {
+      try {
+        setProgress(0);
+        media = await bunny.uploadMedia(attach.items, false, (d, t) => setProgress(d / t));
+      } catch (e) {
+        bunny.say(e instanceof Error ? e.message : "Upload failed");
+        setProgress(null);
+        return;
+      }
+    }
+    const ok = await bunny.sendMessage(draft, replyTo || undefined, media);
+    setProgress(null);
     if (ok) {
       setDraft("");
       setReplyTo(null);
+      attach.clear();
       stickRef.current = true;
+      if (slow) {
+        setCooldownUntil(Date.now() + slow * 1000);
+        setNow(Date.now());
+      }
     }
   }
 
@@ -101,7 +148,23 @@ export function ServerView({
   const count = bunny.people.length;
 
   return (
-    <section className="panel lg-panel" aria-label="Server chat">
+    <section
+      className={`panel lg-panel ${dragging ? "dropping" : ""}`}
+      aria-label="Server chat"
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files") || banned || locked) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        if (!banned && !locked) void attach.add(e.dataTransfer.files);
+      }}
+    >
       <div className="panel-head">
         <span className="hash">
           <Hash size={18} />
@@ -110,6 +173,16 @@ export function ServerView({
           <h2>lounge</h2>
           <p>{bunny.online ? `${count} online · everyone shares this room` : bunny.status}</p>
         </div>
+        {bunny.room?.locked ? (
+          <span className="chip warn">
+            <Lock size={12} /> Locked
+          </span>
+        ) : null}
+        {bunny.room?.slowmode ? (
+          <span className="chip">
+            <Timer size={12} /> {bunny.room.slowmode}s
+          </span>
+        ) : null}
       </div>
       {showSearch ? (
         <label className="search">
@@ -174,7 +247,6 @@ export function ServerView({
                     </button>
                     {adminMsg ? <AdminTag /> : null}
                     {isBanned ? <span className="tag ban">Banned</span> : null}
-                    {bunny.friends[msg.authorId] ? <span className="tag friend">Friend</span> : null}
                     <span className="stamp">{timeLabel(msg.at, h24)}</span>
                   </div>
                   {editing === msg.id ? (
@@ -212,10 +284,11 @@ export function ServerView({
                     </div>
                   ) : (
                     <p className="text">
-                      <RichText text={msg.text} selfName={bunny.profile.name} />
+                      {msg.text ? <RichText text={msg.text} selfName={bunny.profile.name} /> : null}
                       {msg.editedAt ? <span className="edited"> (edited)</span> : null}
                     </p>
                   )}
+                  {msg.media ? <MediaGrid media={msg.media} load={bunny.loadMedia} /> : null}
                   {confirmDelete === msg.id ? (
                     <div className="row" style={{ marginTop: "0.4rem" }}>
                       <button
@@ -396,6 +469,34 @@ export function ServerView({
             </div>
           </div>
         ) : null}
+        {showCommands ? (
+          <div className="cmds lg" role="listbox" aria-label="Admin commands">
+            <h3>
+              <Terminal size={12} /> Admin commands
+            </h3>
+            {suggestions.slice(0, 8).map((c, i) => (
+              <button
+                key={c.name}
+                type="button"
+                role="option"
+                aria-selected={i === Math.min(cmdIndex, suggestions.length - 1)}
+                className="cmd"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setDraft(`/${c.name} `);
+                  composerRef.current?.focus();
+                }}
+              >
+                <code>
+                  /{c.name}
+                  {c.args ? <i> {c.args}</i> : null}
+                </code>
+                <span>{c.help}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <AttachTray items={attach.items} onRemove={attach.remove} progress={progress} />
         {replyTo ? (
           <div className="replying">
             <CornerUpLeft size={13} />
@@ -417,21 +518,93 @@ export function ServerView({
           <button className="gbtn icon" type="button" data-emoji-toggle aria-label="Emoji" aria-expanded={picker} onClick={() => setPicker((v) => !v)} style={{ background: "transparent", boxShadow: "none" }}>
             <Smile size={20} />
           </button>
+          <button
+            className="gbtn icon"
+            type="button"
+            aria-label="Attach images or video"
+            title="Attach images or video"
+            disabled={!bunny.online || banned || locked || progress !== null}
+            onClick={() => fileRef.current?.click()}
+            style={{ background: "transparent", boxShadow: "none" }}
+          >
+            <Paperclip size={19} />
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept={ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => {
+              void attach.add(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          {canCommand ? (
+            <button
+              className="gbtn icon cmd-btn"
+              type="button"
+              aria-label="Admin commands"
+              title="Admin commands"
+              onClick={() => {
+                setDraft("/");
+                composerRef.current?.focus();
+              }}
+              style={{ background: "transparent", boxShadow: "none" }}
+            >
+              <Terminal size={18} />
+            </button>
+          ) : null}
           <input
             ref={composerRef}
             value={draft}
             maxLength={2000}
-            disabled={!bunny.online || banned}
-            placeholder={banned ? "You're banned from this server" : bunny.online ? "Message #lounge" : "Waiting for the room…"}
+            disabled={!bunny.online || banned || locked || cooldown > 0}
+            placeholder={
+              banned
+                ? "You're banned from this server"
+                : locked
+                  ? "Chat is locked by an admin"
+                  : cooldown > 0
+                    ? `Slowmode: wait ${cooldown}s`
+                    : !bunny.online
+                      ? "Waiting for the room…"
+                      : canCommand
+                        ? "Message #lounge, or type / for commands"
+                        : "Message #lounge"
+            }
             aria-label="Message"
             onChange={(e) => {
               setDraft(e.target.value);
-              if (e.target.value) bunny.pingTyping();
+              setCmdIndex(0);
+              if (e.target.value && !e.target.value.startsWith("/")) bunny.pingTyping();
+            }}
+            onPaste={(e) => {
+              const files = [...e.clipboardData.files];
+              if (files.length) {
+                e.preventDefault();
+                void attach.add(files);
+              }
             }}
             onKeyDown={(e) => {
+              if (showCommands && !/\s/.test(draft.slice(1))) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  const n = Math.min(suggestions.length, 8);
+                  setCmdIndex((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+                  return;
+                }
+                if (e.key === "Tab" || (e.key === "Enter" && suggestions.length && draft.length > 1 && suggestions[0].name !== draft.slice(1).toLowerCase())) {
+                  e.preventDefault();
+                  const pick = suggestions[Math.min(cmdIndex, suggestions.length - 1)];
+                  if (pick) setDraft(`/${pick.name} `);
+                  return;
+                }
+              }
               if (e.key === "Escape") {
                 setPicker(false);
                 setReplyTo(null);
+                if (draft.startsWith("/")) setDraft("");
               }
               if (e.key === "ArrowUp" && !draft) {
                 const last = [...bunny.messages].reverse().find((m) => m.authorId === me);
@@ -443,7 +616,7 @@ export function ServerView({
               }
             }}
           />
-          <button className="send" type="submit" disabled={!bunny.online || !draft.trim() || banned} aria-label="Send">
+          <button className="send" type="submit" disabled={!bunny.online || (!draft.trim() && !attach.items.length) || banned || locked || cooldown > 0 || progress !== null} aria-label="Send">
             <Send size={18} />
           </button>
         </form>

@@ -1,9 +1,10 @@
 import { i as __toESM } from "../_runtime.mjs";
-import { b as require_jsx_runtime, q as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
-import { A as Image$1, B as Ban, C as Megaphone, F as CornerUpLeft, I as Copy, L as Clock, M as Eye, N as EyeOff, O as KeyRound, P as Ellipsis, R as Check, S as MessageCircle, T as Lock, U as ArrowLeft, V as AtSign, W as ArrowDown, _ as RotateCcw, a as UserPlus, b as Palette, c as Trash2, d as ShieldCheck, f as ShieldAlert, g as ScrollText, h as Search, i as UserX, j as Hash, k as Inbox, l as Smile, m as Send, n as Users, o as UserMinus, p as Settings, r as User, s as TriangleAlert, t as X, u as Shield, v as Pencil, w as LogIn, x as MessagesSquare, z as Bell } from "../_libs/lucide-react.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/room-DXOuQfBA.js
+import { J as require_react, n as require_react_dom, x as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
+import { $ as ArrowLeft, A as LogIn, B as Eye, D as MessageCircle, E as MessagesSquare, F as KeyRound, G as CornerUpLeft, H as Eraser, I as Inbox, J as Check, K as Copy, L as Image$1, N as LoaderCircle, O as Megaphone, P as LayoutGrid, R as ImageOff, S as Pencil, T as Palette, U as Ellipsis, V as EyeOff, W as Download, X as Ban, Y as Bell, Z as AtSign, _ as Settings, a as UserX, b as ScrollText, c as TriangleAlert, d as Terminal, et as ArrowDown, f as Smile, g as ShieldAlert, h as ShieldCheck, i as User, j as Lock, k as LogOut, l as Trash2, m as Shield, n as X, o as UserPlus, p as SmilePlus, q as Clock, r as Users, s as UserMinus, t as Zap, u as Timer, v as Send, w as Paperclip, x as RotateCcw, y as Search, z as Hash } from "../_libs/lucide-react.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/room-DeD3FrU9.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
+var import_react_dom = require_react_dom();
 /** Public halves of the admin root keys. Safe to ship: they verify, they can't sign. */
 var ROOT_SIGN_PUB = {
 	x: "m5IIhq8deLXOstjziUhiiS_7yE_mLpxW1qWOqC1xzl0",
@@ -324,7 +325,8 @@ var T = {
 	ADMINS: `${NS}/public/admins/`,
 	MOD: `${NS}/public/mod/`,
 	INBOX: `${NS}/v2/inbox/`,
-	MODLOG: `${NS}/v2/modlog/`
+	MODLOG: `${NS}/v2/modlog/`,
+	MEDIA: `${NS}/v2/media/`
 };
 var DEFAULT_SETTINGS = {
 	sounds: true,
@@ -521,6 +523,7 @@ var BunnySocket = class {
 	ping = null;
 	stopped = false;
 	buffer = /* @__PURE__ */ new Uint8Array(0);
+	dynamic = /* @__PURE__ */ new Set();
 	constructor(url, clientId, willTopic, topics, onReady, onPublish, onDown) {
 		this.url = url;
 		this.clientId = clientId;
@@ -595,6 +598,7 @@ var BunnySocket = class {
 				return;
 			}
 			for (const topic of this.topics) this.subscribe(topic);
+			for (const topic of this.dynamic) this.subscribe(topic);
 			this.clearPing();
 			this.ping = setInterval(() => this.send(192, []), 15e3);
 			this.onReady();
@@ -612,6 +616,20 @@ var BunnySocket = class {
 			cursor += 2;
 		}
 		this.onPublish(topicField.value, decoder.decode(body.subarray(cursor)));
+	}
+	/** Subscribe after connect (kept across reconnects until unwatched). */
+	watch(topic) {
+		this.dynamic.add(topic);
+		this.subscribe(topic);
+	}
+	unwatch(topic) {
+		if (!this.dynamic.delete(topic)) return;
+		const id = this.seq++ & 65535;
+		this.send(162, [
+			id >> 8,
+			id & 255,
+			...utf8(topic)
+		]);
 	}
 	get connected() {
 		return this.ws?.readyState === WebSocket.OPEN;
@@ -678,6 +696,178 @@ function mentions(text, name) {
 	const first = name.toLowerCase().split(/\s+/)[0];
 	return lower.includes("@" + name.toLowerCase()) || first.length > 1 && new RegExp(`@${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\b|$)`).test(lower) || lower.includes("@everyone");
 }
+var CHUNK_BYTES = 196608;
+var IMAGE_MIMES = /* @__PURE__ */ new Set([
+	"image/webp",
+	"image/jpeg",
+	"image/png",
+	"image/gif"
+]);
+var VIDEO_MIMES = /* @__PURE__ */ new Set([
+	"video/mp4",
+	"video/webm",
+	"video/quicktime"
+]);
+function canvasBlob(canvas, type, q) {
+	return new Promise((resolve) => canvas.toBlob(resolve, type, q));
+}
+async function decodeImage(file) {
+	const url = URL.createObjectURL(file);
+	try {
+		return await new Promise((resolve, reject) => {
+			const img = new Image();
+			img.onload = () => resolve(img);
+			img.onerror = () => reject(/* @__PURE__ */ new Error("unreadable"));
+			img.src = url;
+		});
+	} finally {
+		URL.revokeObjectURL(url);
+	}
+}
+/** Turn any image into a web-friendly WebP/JPEG; keep short videos as they are. */
+async function prepareFile(file) {
+	const name = file.name.slice(0, 80);
+	if (file.type.startsWith("video/")) {
+		if (!VIDEO_MIMES.has(file.type)) throw new Error("Videos must be MP4, WebM or MOV");
+		if (file.size > 8388608) throw new Error("Videos can be up to 8 MB");
+		const bytes = new Uint8Array(await file.arrayBuffer());
+		const preview = URL.createObjectURL(file);
+		const dims = await new Promise((resolve) => {
+			const v = document.createElement("video");
+			v.preload = "metadata";
+			v.onloadedmetadata = () => resolve({
+				w: v.videoWidth || void 0,
+				h: v.videoHeight || void 0
+			});
+			v.onerror = () => resolve({});
+			v.src = preview;
+		});
+		return {
+			bytes,
+			mime: file.type === "video/quicktime" ? "video/mp4" : file.type,
+			kind: "video",
+			...dims,
+			name,
+			preview
+		};
+	}
+	if (!file.type.startsWith("image/") && !/\.(png|jpe?g|gif|webp|bmp|avif|heic)$/i.test(file.name)) throw new Error("Only images and videos can be shared");
+	if (file.type === "image/gif" && file.size <= 3145728) {
+		const img = await decodeImage(file);
+		return {
+			bytes: new Uint8Array(await file.arrayBuffer()),
+			mime: "image/gif",
+			kind: "image",
+			w: img.naturalWidth,
+			h: img.naturalHeight,
+			name,
+			preview: URL.createObjectURL(file)
+		};
+	}
+	const img = await decodeImage(file);
+	for (const [max, q] of [
+		[1920, .84],
+		[1600, .78],
+		[1280, .72],
+		[1024, .68]
+	]) {
+		const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+		const canvas = document.createElement("canvas");
+		canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+		canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+		const ctx = canvas.getContext("2d");
+		if (!ctx) break;
+		ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+		let blob = await canvasBlob(canvas, "image/webp", q);
+		if (!blob || blob.type !== "image/webp") blob = await canvasBlob(canvas, "image/jpeg", q);
+		if (blob && blob.size <= 921600) return {
+			bytes: new Uint8Array(await blob.arrayBuffer()),
+			mime: blob.type,
+			kind: "image",
+			w: canvas.width,
+			h: canvas.height,
+			name,
+			preview: URL.createObjectURL(blob)
+		};
+	}
+	throw new Error("That image couldn't be processed");
+}
+async function packMedia(p, encrypt) {
+	let bytes = p.bytes;
+	const ref = {
+		id: randomId(10),
+		kind: p.kind,
+		mime: p.mime,
+		size: p.bytes.length,
+		n: 0,
+		w: p.w,
+		h: p.h,
+		name: p.name
+	};
+	if (encrypt) {
+		const raw = crypto.getRandomValues(/* @__PURE__ */ new Uint8Array(32));
+		const iv = crypto.getRandomValues(/* @__PURE__ */ new Uint8Array(12));
+		const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt"]);
+		bytes = new Uint8Array(await crypto.subtle.encrypt({
+			name: "AES-GCM",
+			iv
+		}, key, bytes));
+		ref.k = b64u(raw);
+		ref.iv = b64u(iv);
+	}
+	const chunks = [];
+	for (let i = 0; i < bytes.length; i += CHUNK_BYTES) chunks.push(b64u(bytes.subarray(i, i + CHUNK_BYTES)));
+	ref.n = chunks.length;
+	return {
+		ref,
+		chunks
+	};
+}
+async function unpackMedia(ref, chunks) {
+	const parts = chunks.map((c) => unb64u(c));
+	const total = parts.reduce((n, p) => n + p.length, 0);
+	let bytes = new Uint8Array(total);
+	let o = 0;
+	for (const p of parts) {
+		bytes.set(p, o);
+		o += p.length;
+	}
+	if (ref.k && ref.iv) {
+		const key = await crypto.subtle.importKey("raw", unb64u(ref.k), "AES-GCM", false, ["decrypt"]);
+		bytes = new Uint8Array(await crypto.subtle.decrypt({
+			name: "AES-GCM",
+			iv: unb64u(ref.iv)
+		}, key, bytes));
+	}
+	return URL.createObjectURL(new Blob([bytes], { type: ref.mime }));
+}
+/** Validate refs that arrive from other people. */
+function cleanMedia(value) {
+	if (!Array.isArray(value)) return void 0;
+	const out = [];
+	for (const r of value.slice(0, 4)) {
+		if (!r || typeof r.id !== "string" || !/^[a-z0-9]{6,24}$/.test(r.id)) continue;
+		const kind = r.kind === "video" ? "video" : r.kind === "image" ? "image" : null;
+		if (!kind) continue;
+		if (!(kind === "image" ? IMAGE_MIMES : VIDEO_MIMES).has(r.mime)) continue;
+		const n = Number(r.n);
+		if (!Number.isInteger(n) || n < 1 || n > 64) continue;
+		const dim = (v) => typeof v === "number" && v > 0 && v < 2e4 ? Math.round(v) : void 0;
+		out.push({
+			id: r.id,
+			kind,
+			mime: r.mime,
+			size: Math.min(Number(r.size) || 0, 67108864),
+			n,
+			w: dim(r.w),
+			h: dim(r.h),
+			name: typeof r.name === "string" ? r.name.slice(0, 80) : void 0,
+			k: typeof r.k === "string" && /^[A-Za-z0-9_-]{43}$/.test(r.k) ? r.k : void 0,
+			iv: typeof r.iv === "string" && /^[A-Za-z0-9_-]{16}$/.test(r.iv) ? r.iv : void 0
+		});
+	}
+	return out.length ? out : void 0;
+}
 var ID_RE = /^[a-z0-9]{4,40}$/;
 var USER_RE = /^[a-z0-9]{8,40}$/;
 var STATUSES = /* @__PURE__ */ new Set([
@@ -702,7 +892,7 @@ function chime(freq) {
 		osc.stop(ctx.currentTime + .17);
 	} catch {}
 }
-var msgSigText = (m) => `${m.id}\n${m.authorId}\n${m.at}\n${m.text}`;
+var msgSigText = (m) => `${m.id}\n${m.authorId}\n${m.at}\n${m.text}\n${(m.media || []).map((x) => x.id).join(",")}`;
 function parse(payload) {
 	try {
 		return JSON.parse(payload);
@@ -748,6 +938,14 @@ function useBunny(mode) {
 	});
 	const [serverUnread, setServerUnread] = (0, import_react.useState)(0);
 	const [toast, setToast] = (0, import_react.useState)("");
+	const [room, setRoom] = (0, import_react.useState)(null);
+	const [flash, setFlash] = (0, import_react.useState)(null);
+	const [kicked, setKicked] = (0, import_react.useState)(null);
+	const [modHistory, setModHistory] = (0, import_react.useState)([]);
+	const lastSendRef = (0, import_react.useRef)(0);
+	const roomRef = (0, import_react.useRef)(null);
+	roomRef.current = room;
+	const mediaWaitRef = (0, import_react.useRef)(/* @__PURE__ */ new Map());
 	const [loaded, setLoaded] = (0, import_react.useState)(false);
 	const socketRef = (0, import_react.useRef)(null);
 	const idRef = (0, import_react.useRef)(null);
@@ -1026,8 +1224,10 @@ function useBunny(mode) {
 					name: cleanName(raw.replyTo.name),
 					text: String(raw.replyTo.text || "").slice(0, 120)
 				} : void 0,
+				media: cleanMedia(raw.media),
 				sig: typeof raw.sig === "string" ? raw.sig.slice(0, 200) : void 0
 			};
+			if (!msg.text.trim() && !msg.media) return;
 			const prev = msgMap.get(msg.id);
 			if (escrowReady && prev && msg.editedAt && prev.text !== msg.text) addLog({
 				key: `edit:${msg.id}:${msg.editedAt}`,
@@ -1128,7 +1328,8 @@ function useBunny(mode) {
 							at: Number(env.at) || Date.now(),
 							text: body.text.slice(0, 2e3),
 							name: cleanName(body.name) || "Guest",
-							color: safeColor(body.color, env.from)
+							color: safeColor(body.color, env.from),
+							media: cleanMedia(body.media)
 						};
 						const fresh = !seenDmRef.current.has(dm.id);
 						seenDmRef.current.add(dm.id);
@@ -1166,7 +1367,8 @@ function useBunny(mode) {
 							at: Number(env.at) || Date.now(),
 							text: body.text.slice(0, 2e3),
 							name: cleanName(body.name) || "Guest",
-							color: safeColor(body.color, env.from)
+							color: safeColor(body.color, env.from),
+							media: cleanMedia(body.media)
 						};
 						setAllDms((prev) => prev[dm.id] ? prev : {
 							...prev,
@@ -1265,6 +1467,41 @@ function useBunny(mode) {
 			if (!payload) return guardEmpty(topic);
 			const rec = await verifyRecord(parse(payload));
 			if (!rec) return;
+			if (escrowReady) {
+				const line = rec.kind === "ban" ? `banned ${rec.targetName}` : rec.kind === "unban" ? `unbanned ${rec.targetName}` : rec.kind === "kick" ? `kicked ${rec.targetName}` : rec.kind === "flash" ? `${rec.style === "m" ? "/m" : "/h"} “${rec.text}”` : rec.kind === "room" ? rec.locked ? "locked chat" : rec.slowmode ? `slowmode ${rec.slowmode}s` : "room controls reset" : rec.kind === "wallpaper" ? rec.mode === "default" ? "reset the wallpaper" : "changed the wallpaper" : rec.text ? "posted an announcement" : "cleared the announcement";
+				const hkey = `${rec.kind}:${rec.at}:${rec.by}`;
+				setModHistory((prev) => prev.some((h) => h.key === hkey) ? prev : [{
+					key: hkey,
+					text: line,
+					at: rec.at,
+					byName: rec.byName
+				}, ...prev].slice(0, 80));
+			}
+			if (rec.kind === "flash" && key === "flash") {
+				if (Date.now() - rec.at < 2e4 && typeof rec.text === "string") setFlash({
+					...rec,
+					text: rec.text.slice(0, 200)
+				});
+				return;
+			}
+			if (rec.kind === "kick" && key === "kick") {
+				if (rec.target === me.id && Date.now() - rec.at < 2e4 && !adminsRef.current[me.id]) {
+					setKicked(rec);
+					socketRef.current?.stop();
+					setOnline(false);
+					setStatus("Kicked");
+				}
+				return;
+			}
+			if (rec.kind === "room" && key === "room") {
+				setRoom((prev) => prev && prev.at >= rec.at ? prev : {
+					...rec,
+					slowmode: Math.max(0, Math.min(3600, Number(rec.slowmode) || 0)),
+					locked: !!rec.locked
+				});
+				guardRemember(topic, payload);
+				return;
+			}
 			if ((rec.kind === "ban" || rec.kind === "unban") && key === `ban-${rec.target}`) {
 				setBans((prev) => prev[rec.target] && prev[rec.target].at >= rec.at ? prev : {
 					...prev,
@@ -1315,6 +1552,16 @@ function useBunny(mode) {
 				const [uid, item] = topic.slice(T.INBOX.length).split("/");
 				if (!uid || !item) return;
 				handleInbox(uid, item, payload);
+				return;
+			}
+			if (topic.startsWith(T.MEDIA)) {
+				const [mid, idx] = topic.slice(T.MEDIA.length).split("/");
+				const wait = mediaWaitRef.current.get(mid);
+				const i = Number(idx);
+				if (!wait || !payload || !Number.isInteger(i) || i < 0 || i >= wait.chunks.length || wait.chunks[i]) return;
+				wait.chunks[i] = payload;
+				wait.got += 1;
+				if (wait.got === wait.chunks.length) wait.done(true);
 				return;
 			}
 			if (topic.startsWith(T.MODLOG) && escrowReady && payload && sessionRef.current) {
@@ -1490,10 +1737,24 @@ function useBunny(mode) {
 		const sealed = await seal({ mod: ESCROW_BOX_PUB }, entry);
 		publish(T.MODLOG + randomId(10), JSON.stringify(sealed), true);
 	};
-	const sendMessage = (0, import_react.useCallback)(async (text, replyTo) => {
+	const sendMessage = (0, import_react.useCallback)(async (text, replyTo, media) => {
 		const me = idRef.current;
 		const clean = text.trim().slice(0, 2e3);
-		if (!me || !clean || !socketRef.current) return false;
+		if (!me || !clean && !media?.length || !socketRef.current) return false;
+		const r = roomRef.current;
+		const staff = !!sessionRef.current;
+		if (r?.locked && !staff) {
+			setToast("Chat is locked by an admin");
+			return false;
+		}
+		if (r?.slowmode && !staff) {
+			const wait = lastSendRef.current + r.slowmode * 1e3 - Date.now();
+			if (wait > 0) {
+				setToast(`Slowmode is on. Wait ${Math.ceil(wait / 1e3)}s`);
+				return false;
+			}
+		}
+		lastSendRef.current = Date.now();
 		const msg = {
 			id: `${Date.now().toString(36)}${randomId(3)}`.slice(0, 24),
 			authorId: me.id,
@@ -1503,8 +1764,9 @@ function useBunny(mode) {
 			replyTo: replyTo ? {
 				id: replyTo.id,
 				name: replyTo.name,
-				text: replyTo.text.slice(0, 120)
-			} : void 0
+				text: replyTo.text.slice(0, 120) || "Attachment"
+			} : void 0,
+			media: media?.length ? media : void 0
 		};
 		if (sessionRef.current) msg.sig = await signText(me.sign, msgSigText(msg));
 		const body = JSON.stringify(msg);
@@ -1545,6 +1807,7 @@ function useBunny(mode) {
 		const me = idRef.current;
 		if (!me) return;
 		publish(T.HISTORY + msg.id, "", true);
+		for (const m of msg.media || []) for (let i = 0; i < m.n; i++) publish(T.MEDIA + m.id + "/" + i, "", true);
 		sealLog({
 			key: `del:${msg.id}`,
 			kind: "delete",
@@ -1552,7 +1815,7 @@ function useBunny(mode) {
 			msgId: msg.id,
 			authorId: msg.authorId,
 			authorName: msg.name,
-			before: msg.text,
+			before: msg.text || (msg.media?.length ? `[${msg.media.length} attachment${msg.media.length > 1 ? "s" : ""}]` : ""),
 			actorId: me.id,
 			actorName: profileRef.current.name,
 			at: Date.now()
@@ -1709,10 +1972,10 @@ function useBunny(mode) {
 		contacts,
 		setView
 	]);
-	const sendDirect = (0, import_react.useCallback)(async (peer, text) => {
+	const sendDirect = (0, import_react.useCallback)(async (peer, text, media) => {
 		const me = idRef.current;
 		const clean = text.trim().slice(0, 2e3);
-		if (!me || !clean) return false;
+		if (!me || !clean && !media?.length) return false;
 		const info = lookup(peer);
 		if (!info.box) {
 			setToast("They need to come online once before you can message them");
@@ -1731,7 +1994,8 @@ function useBunny(mode) {
 		}, {
 			text: clean,
 			name: p.name,
-			color: p.color
+			color: p.color,
+			media
 		});
 		const body = JSON.stringify({
 			t: "dm",
@@ -1757,7 +2021,8 @@ function useBunny(mode) {
 				at,
 				text: clean,
 				name: p.name,
-				color: p.color
+				color: p.color,
+				media
 			}
 		}));
 		if (!friends[peer] && !contacts[peer]) setContacts((prev) => ({
@@ -1782,6 +2047,7 @@ function useBunny(mode) {
 		if (!me || dm.from !== me.id) return;
 		publish(T.INBOX + dm.to + "/dm-" + dm.id, "", true);
 		publish(T.INBOX + dm.from + "/dm-" + dm.id, "", true);
+		for (const m of dm.media || []) for (let i = 0; i < m.n; i++) publish(T.MEDIA + m.id + "/" + i, "", true);
 		setDms((prev) => {
 			const next = { ...prev };
 			delete next[dm.id];
@@ -1794,7 +2060,7 @@ function useBunny(mode) {
 			msgId: dm.id,
 			authorId: dm.from,
 			authorName: dm.name,
-			before: dm.text,
+			before: dm.text || (dm.media?.length ? "[attachment]" : ""),
 			actorId: me.id,
 			actorName: profileRef.current.name,
 			at: Date.now()
@@ -1813,13 +2079,122 @@ function useBunny(mode) {
 		window.location.reload();
 		return true;
 	}, []);
-	const modPublish = (0, import_react.useCallback)(async (topic, payload) => {
+	const modPublish = (0, import_react.useCallback)(async (topic, payload, retained = true) => {
 		const me = idRef.current;
 		const sess = sessionRef.current;
 		if (!me || !sess) return false;
 		const rec = await signRecord(me.sign, sess.cert, payload);
-		publish(topic, JSON.stringify(rec), true);
+		publish(topic, JSON.stringify(rec), retained);
 		return true;
+	}, []);
+	const flashAll = (0, import_react.useCallback)(async (text, style = "m") => {
+		const me = idRef.current;
+		const clean = text.trim().slice(0, 200);
+		if (!me || !clean) return false;
+		const rec = {
+			kind: "flash",
+			id: randomId(6),
+			style,
+			text: clean,
+			at: Date.now(),
+			by: me.id,
+			byName: profileRef.current.name
+		};
+		return modPublish(T.MOD + "flash", rec, false);
+	}, [modPublish]);
+	const kick = (0, import_react.useCallback)(async (target, targetName, reason) => {
+		const me = idRef.current;
+		if (!me || target === me.id) return;
+		const rec = {
+			kind: "kick",
+			target,
+			targetName,
+			reason: reason.slice(0, 200),
+			at: Date.now(),
+			by: me.id,
+			byName: profileRef.current.name
+		};
+		if (await modPublish(T.MOD + "kick", rec, false)) setToast(`${targetName} was kicked`);
+	}, [modPublish]);
+	const setRoomControls = (0, import_react.useCallback)(async (patch) => {
+		const me = idRef.current;
+		if (!me) return;
+		const cur = roomRef.current;
+		const rec = {
+			kind: "room",
+			slowmode: patch.slowmode ?? cur?.slowmode ?? 0,
+			locked: patch.locked ?? cur?.locked ?? false,
+			at: Date.now(),
+			by: me.id,
+			byName: profileRef.current.name
+		};
+		if (await modPublish(T.MOD + "room", rec)) setToast(patch.locked !== void 0 ? rec.locked ? "Chat locked" : "Chat unlocked" : rec.slowmode ? `Slowmode set to ${rec.slowmode}s` : "Slowmode off");
+	}, [modPublish]);
+	/** Admin: delete the newest n server messages (logged like any delete). */
+	const clearRecent = (0, import_react.useCallback)((n) => {
+		const me = idRef.current;
+		if (!me) return 0;
+		const list = [...msgMapRef.current.values()].sort((a, b) => b.at - a.at).slice(0, Math.max(1, Math.min(100, n)));
+		for (const msg of list) {
+			publish(T.HISTORY + msg.id, "", true);
+			for (const m of msg.media || []) for (let i = 0; i < m.n; i++) publish(T.MEDIA + m.id + "/" + i, "", true);
+			sealLog({
+				key: `del:${msg.id}`,
+				kind: "delete",
+				scope: "server",
+				msgId: msg.id,
+				authorId: msg.authorId,
+				authorName: msg.name,
+				before: msg.text || "[attachment]",
+				actorId: me.id,
+				actorName: profileRef.current.name,
+				at: Date.now()
+			});
+		}
+		setToast(`Cleared ${list.length} message${list.length === 1 ? "" : "s"}`);
+		return list.length;
+	}, []);
+	const uploadMedia = (0, import_react.useCallback)(async (items, encrypt, onProgress) => {
+		const packed = await Promise.all(items.map((p) => packMedia(p, encrypt)));
+		const total = packed.reduce((n, p) => n + p.chunks.length, 0);
+		let done = 0;
+		for (const { ref, chunks } of packed) for (let i = 0; i < chunks.length; i++) {
+			if (!socketRef.current?.connected) throw new Error("Lost connection while uploading");
+			publish(T.MEDIA + ref.id + "/" + i, chunks[i], true);
+			done += 1;
+			onProgress?.(done, total);
+			await new Promise((r) => setTimeout(r, 25));
+		}
+		return packed.map((p) => p.ref);
+	}, []);
+	const mediaCache = (0, import_react.useRef)(/* @__PURE__ */ new Map());
+	const loadMedia = (0, import_react.useCallback)((ref) => {
+		const hit = mediaCache.current.get(ref.id);
+		if (hit) return hit;
+		const job = new Promise((resolve, reject) => {
+			const topic = T.MEDIA + ref.id + "/+";
+			const wait = {
+				chunks: new Array(ref.n).fill(void 0),
+				got: 0,
+				done: (ok) => {
+					window.clearTimeout(timer);
+					mediaWaitRef.current.delete(ref.id);
+					socketRef.current?.unwatch(topic);
+					if (!ok) return reject(/* @__PURE__ */ new Error("Attachment unavailable"));
+					unpackMedia(ref, wait.chunks).then(resolve, reject);
+				}
+			};
+			const timer = window.setTimeout(() => wait.done(false), 3e4);
+			mediaWaitRef.current.set(ref.id, wait);
+			const start = () => {
+				if (socketRef.current?.connected) socketRef.current.watch(topic);
+				else window.setTimeout(start, 500);
+			};
+			start();
+		});
+		job.catch(() => mediaCache.current.delete(ref.id));
+		mediaCache.current.set(ref.id, job);
+		return job;
 	}, []);
 	const ban = (0, import_react.useCallback)(async (target, targetName, reason, kind = "ban") => {
 		const me = idRef.current;
@@ -1968,7 +2343,18 @@ function useBunny(mode) {
 		ban,
 		warn,
 		setGlobalWallpaper,
-		setAnnouncement
+		setAnnouncement,
+		room,
+		flash,
+		clearFlash: () => setFlash(null),
+		kicked,
+		modHistory,
+		flashAll,
+		kick,
+		setRoomControls,
+		clearRecent,
+		uploadMedia,
+		loadMedia
 	};
 }
 /** The platform mark: a rounded five-point star. */
@@ -2006,13 +2392,10 @@ function Face({ avatar, color, label, status, size }) {
 	});
 }
 function AdminTag() {
-	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 		className: "tag",
 		title: "Verified Bunny RTC admin",
-		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Shield, {
-			size: 10,
-			strokeWidth: 2.6
-		}), "Admin"]
+		children: "Admin"
 	});
 }
 function Toggle({ on, onChange, label }) {
@@ -2039,7 +2422,7 @@ function Choices({ value, options, onChange, label }) {
 	});
 }
 /** A floating glass menu anchored at a point, kept inside the viewport. */
-function Floating({ x, y, onClose, children }) {
+function Floating({ x, y, onClose, children, className = "menu lg" }) {
 	const ref = (0, import_react.useRef)(null);
 	const [pos, setPos] = (0, import_react.useState)({
 		left: x,
@@ -2075,13 +2458,15 @@ function Floating({ x, y, onClose, children }) {
 			document.removeEventListener("keydown", onKey);
 		};
 	}, [onClose]);
-	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+	const node = /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 		ref,
-		className: "menu lg",
+		className,
 		style: pos,
 		role: "menu",
 		children
 	});
+	const host = typeof document !== "undefined" ? document.querySelector(".stage") : null;
+	return host ? (0, import_react_dom.createPortal)(node, host) : node;
 }
 async function shrinkImage(file, size = 128) {
 	const url = URL.createObjectURL(file);
@@ -2157,6 +2542,411 @@ function ago(ts) {
 	if (s < 3600) return `${Math.floor(s / 60)}m`;
 	if (s < 86400) return `${Math.floor(s / 3600)}h`;
 	return `${Math.floor(s / 86400)}d`;
+}
+function MediaItem({ media, load, single, onOpen }) {
+	const [url, setUrl] = (0, import_react.useState)(null);
+	const [failed, setFailed] = (0, import_react.useState)(false);
+	(0, import_react.useEffect)(() => {
+		let alive = true;
+		load(media).then((u) => alive && setUrl(u), () => alive && setFailed(true));
+		return () => {
+			alive = false;
+		};
+	}, [media, load]);
+	const ratio = media.w && media.h ? `${media.w} / ${media.h}` : "16 / 10";
+	const style = single ? {
+		aspectRatio: ratio,
+		maxWidth: media.w && media.h && media.h > media.w ? "16rem" : "26rem"
+	} : {};
+	if (failed) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "media-cell media-missing",
+		style,
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ImageOff, { size: 20 }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Attachment unavailable" })]
+	});
+	if (!url) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+		className: "media-cell media-loading",
+		style,
+		"aria-label": "Loading attachment",
+		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LoaderCircle, {
+			size: 20,
+			className: "animate-spin"
+		})
+	});
+	if (media.kind === "video") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+		className: "media-cell",
+		style,
+		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", {
+			src: url,
+			controls: true,
+			playsInline: true,
+			preload: "metadata"
+		})
+	});
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+		type: "button",
+		className: "media-cell",
+		style,
+		onClick: () => onOpen(url),
+		"aria-label": `Open ${media.name || "image"}`,
+		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+			src: url,
+			alt: media.name || "Shared image",
+			loading: "lazy"
+		})
+	});
+}
+function MediaGrid({ media, load }) {
+	const [open, setOpen] = (0, import_react.useState)(null);
+	const single = media.length === 1;
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+		className: `media-grid ${single ? "one" : ""}`,
+		children: media.map((m) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MediaItem, {
+			media: m,
+			load,
+			single,
+			onOpen: setOpen
+		}, m.id))
+	}), open ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Lightbox, {
+		url: open,
+		onClose: () => setOpen(null)
+	}) : null] });
+}
+function Lightbox({ url, onClose }) {
+	(0, import_react.useEffect)(() => {
+		const onKey = (e) => e.key === "Escape" && onClose();
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [onClose]);
+	const node = /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "lightbox",
+		onClick: onClose,
+		role: "dialog",
+		"aria-label": "Image viewer",
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+			src: url,
+			alt: "",
+			onClick: (e) => e.stopPropagation()
+		}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "lightbox-bar",
+			onClick: (e) => e.stopPropagation(),
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+				className: "gbtn",
+				href: url,
+				download: "bunny-image",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, { size: 16 }), " Save"]
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+				className: "gbtn icon",
+				type: "button",
+				"aria-label": "Close viewer",
+				onClick: onClose,
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 18 })
+			})]
+		})]
+	});
+	const host = document.querySelector(".stage");
+	return host ? (0, import_react_dom.createPortal)(node, host) : node;
+}
+function useAttachments(say) {
+	const [items, setItems] = (0, import_react.useState)([]);
+	const [busy, setBusy] = (0, import_react.useState)(false);
+	const countRef = (0, import_react.useRef)(0);
+	countRef.current = items.length;
+	return {
+		items,
+		busy,
+		add: (0, import_react.useCallback)(async (files) => {
+			const list = [...files || []];
+			if (!list.length) return;
+			setBusy(true);
+			for (const file of list) {
+				if (countRef.current >= 4) {
+					say(`Up to 4 attachments per message`);
+					break;
+				}
+				try {
+					const p = await prepareFile(file);
+					countRef.current += 1;
+					setItems((prev) => prev.length >= 4 ? prev : [...prev, {
+						...p,
+						key: Math.random().toString(36).slice(2)
+					}]);
+				} catch (e) {
+					say(e instanceof Error ? e.message : "That file can't be shared");
+				}
+			}
+			setBusy(false);
+		}, [say]),
+		remove: (0, import_react.useCallback)((key) => {
+			setItems((prev) => {
+				const hit = prev.find((p) => p.key === key);
+				if (hit) URL.revokeObjectURL(hit.preview);
+				return prev.filter((p) => p.key !== key);
+			});
+		}, []),
+		clear: (0, import_react.useCallback)(() => setItems([]), [])
+	};
+}
+function AttachTray({ items, onRemove, progress }) {
+	if (!items.length) return null;
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "tray",
+		children: [items.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "tray-item",
+			children: [
+				p.kind === "video" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", {
+					src: p.preview,
+					muted: true,
+					playsInline: true
+				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+					src: p.preview,
+					alt: ""
+				}),
+				p.kind === "video" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "tray-kind",
+					children: "Video"
+				}) : null,
+				progress === null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					className: "tray-x",
+					type: "button",
+					"aria-label": `Remove ${p.name}`,
+					onClick: () => onRemove(p.key),
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 12 })
+				}) : null
+			]
+		}, p.key)), progress !== null ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "tray-progress",
+			"aria-live": "polite",
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { style: { width: `${Math.round(progress * 100)}%` } }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+				"Uploading ",
+				Math.round(progress * 100),
+				"%"
+			] })]
+		}) : null]
+	});
+}
+var ACCEPT = "image/*,video/mp4,video/webm,video/quicktime";
+var COMMANDS = [
+	{
+		name: "m",
+		args: "<message>",
+		help: "Flash a message on everyone's screen for 3 seconds"
+	},
+	{
+		name: "h",
+		args: "<message>",
+		help: "Show a hint banner at the top for everyone"
+	},
+	{
+		name: "announce",
+		args: "<text>",
+		help: "Pin an announcement under the top bar"
+	},
+	{
+		name: "unannounce",
+		args: "",
+		help: "Remove the pinned announcement"
+	},
+	{
+		name: "warn",
+		args: "<name> <reason>",
+		help: "Send someone a warning they must acknowledge"
+	},
+	{
+		name: "kick",
+		args: "<name> [reason]",
+		help: "Disconnect someone from the room"
+	},
+	{
+		name: "ban",
+		args: "<name> [reason]",
+		help: "Ban someone from the server"
+	},
+	{
+		name: "unban",
+		args: "<name>",
+		help: "Lift a ban"
+	},
+	{
+		name: "slowmode",
+		args: "<seconds | off>",
+		help: "Limit how often people can send"
+	},
+	{
+		name: "lock",
+		args: "",
+		help: "Only admins can send messages"
+	},
+	{
+		name: "unlock",
+		args: "",
+		help: "Let everyone send again"
+	},
+	{
+		name: "clear",
+		args: "[count]",
+		help: "Delete the newest messages (default 10)"
+	},
+	{
+		name: "wallpaper",
+		args: "<preset | url | reset>",
+		help: `Change everyone's wallpaper (${Object.keys(PRESETS).join(", ")})`
+	}
+];
+function matchCommands(draft) {
+	if (!draft.startsWith("/")) return [];
+	const head = draft.slice(1).split(/\s/)[0].toLowerCase();
+	if (/\s/.test(draft.slice(1))) return COMMANDS.filter((c) => c.name === head);
+	return COMMANDS.filter((c) => c.name.startsWith(head));
+}
+/** Resolve "<name> rest…" against known people; names may contain spaces. */
+function resolveUser(bunny, args) {
+	const known = /* @__PURE__ */ new Map();
+	for (const k of Object.values(bunny.directory)) known.set(k.id, {
+		id: k.id,
+		name: k.name
+	});
+	for (const p of bunny.people) known.set(p.id, {
+		id: p.id,
+		name: p.name
+	});
+	const me = bunny.identity?.id;
+	const people = [...known.values()].filter((p) => p.id !== me);
+	const words = args.trim().split(/\s+/).filter(Boolean);
+	if (!words.length) return { error: "Say who: /command <name>" };
+	for (let n = words.length; n >= 1; n--) {
+		const guess = words.slice(0, n).join(" ").toLowerCase();
+		const hits = people.filter((p) => p.name.toLowerCase() === guess || p.id === guess);
+		if (hits.length === 1) return {
+			user: hits[0],
+			rest: words.slice(n).join(" ")
+		};
+		if (hits.length > 1) return { error: `More than one person is called “${words.slice(0, n).join(" ")}”. Use their user ID.` };
+	}
+	const first = words[0].toLowerCase();
+	const partial = people.filter((p) => p.name.toLowerCase().startsWith(first));
+	if (partial.length === 1) return {
+		user: partial[0],
+		rest: words.slice(1).join(" ")
+	};
+	if (partial.length > 1) return { error: `“${words[0]}” matches ${partial.length} people. Type more of the name.` };
+	return { error: `No one called “${words[0]}” here` };
+}
+/** Runs an admin slash command. Returns a message for the admin. */
+async function runCommand(bunny, input) {
+	const body = input.trim().slice(1);
+	const name = body.split(/\s/)[0].toLowerCase();
+	const args = body.slice(name.length).trim();
+	const need = (v, usage) => v ? null : {
+		ok: false,
+		message: `Usage: ${usage}`
+	};
+	switch (name) {
+		case "m":
+		case "h": {
+			const miss = need(args, `/${name} <message>`);
+			if (miss) return miss;
+			await bunny.flashAll(args, name);
+			return {
+				ok: true,
+				message: name === "m" ? "Message flashed to everyone" : "Hint sent"
+			};
+		}
+		case "announce": {
+			const miss = need(args, "/announce <text>");
+			if (miss) return miss;
+			await bunny.setAnnouncement(args);
+			return {
+				ok: true,
+				message: "Announcement posted"
+			};
+		}
+		case "unannounce":
+			await bunny.setAnnouncement("");
+			return {
+				ok: true,
+				message: "Announcement cleared"
+			};
+		case "warn":
+		case "kick":
+		case "ban":
+		case "unban": {
+			const r = resolveUser(bunny, args);
+			if ("error" in r) return {
+				ok: false,
+				message: r.error ?? "Who?"
+			};
+			if (bunny.admins[r.user.id]) return {
+				ok: false,
+				message: "You can't do that to another admin"
+			};
+			if (name === "warn") {
+				if (!r.rest) return {
+					ok: false,
+					message: "Usage: /warn <name> <reason>"
+				};
+				await bunny.warn(r.user.id, r.user.name, r.rest);
+			} else if (name === "kick") await bunny.kick(r.user.id, r.user.name, r.rest);
+			else if (name === "ban") await bunny.ban(r.user.id, r.user.name, r.rest || "Broke the server rules");
+			else await bunny.ban(r.user.id, r.user.name, "", "unban");
+			return {
+				ok: true,
+				message: `${name[0].toUpperCase()}${name.slice(1)}: ${r.user.name}`
+			};
+		}
+		case "slowmode": {
+			const v = args.toLowerCase();
+			const secs = v === "off" || v === "0" ? 0 : Math.round(Number(v.replace(/s$/, "")));
+			if (!Number.isFinite(secs) || secs < 0 || secs > 3600 || !v) return {
+				ok: false,
+				message: "Usage: /slowmode <seconds | off>"
+			};
+			await bunny.setRoomControls({ slowmode: secs });
+			return {
+				ok: true,
+				message: secs ? `Slowmode ${secs}s` : "Slowmode off"
+			};
+		}
+		case "lock":
+		case "unlock":
+			await bunny.setRoomControls({ locked: name === "lock" });
+			return {
+				ok: true,
+				message: name === "lock" ? "Chat locked" : "Chat unlocked"
+			};
+		case "clear": {
+			const n = args ? Math.round(Number(args)) : 10;
+			if (!Number.isFinite(n) || n < 1) return {
+				ok: false,
+				message: "Usage: /clear [count]"
+			};
+			return {
+				ok: true,
+				message: `Cleared ${bunny.clearRecent(Math.min(n, 100))} messages`
+			};
+		}
+		case "wallpaper": {
+			const v = args.trim();
+			if (!v) return {
+				ok: false,
+				message: "Usage: /wallpaper <preset | url | reset>"
+			};
+			if (v === "reset" || v === "default") await bunny.setGlobalWallpaper("default");
+			else if (PRESETS[v.toLowerCase()]) await bunny.setGlobalWallpaper("preset", v.toLowerCase());
+			else if (/^https:\/\//.test(v)) await bunny.setGlobalWallpaper("image", v);
+			else return {
+				ok: false,
+				message: `Pick a preset (${Object.keys(PRESETS).join(", ")}), an https:// link, or reset`
+			};
+			return {
+				ok: true,
+				message: "Wallpaper updated"
+			};
+		}
+		default: return {
+			ok: false,
+			message: `Unknown command /${name}. Type / to see them all.`
+		};
+	}
 }
 var QUICK = [
 	"🔥",
@@ -2270,6 +3060,9 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 	const [editText, setEditText] = (0, import_react.useState)("");
 	const [confirmDelete, setConfirmDelete] = (0, import_react.useState)(null);
 	const [replyTo, setReplyTo] = (0, import_react.useState)(null);
+	const [selected, setSelected] = (0, import_react.useState)(null);
+	const [reactFor, setReactFor] = (0, import_react.useState)(null);
+	const [moreEmoji, setMoreEmoji] = (0, import_react.useState)(false);
 	const [atBottom, setAtBottom] = (0, import_react.useState)(true);
 	const threadRef = (0, import_react.useRef)(null);
 	const stickRef = (0, import_react.useRef)(true);
@@ -2299,29 +3092,100 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 		document.addEventListener("mousedown", onDown);
 		return () => document.removeEventListener("mousedown", onDown);
 	}, [picker]);
+	const canCommand = bunny.adminMode && !!bunny.session;
+	const suggestions = canCommand ? matchCommands(draft) : [];
+	const showCommands = suggestions.length > 0 && !draft.includes("\n");
+	const staff = !!bunny.session;
+	const locked = !!bunny.room?.locked && !staff;
+	const slow = staff ? 0 : bunny.room?.slowmode || 0;
+	const [cooldownUntil, setCooldownUntil] = (0, import_react.useState)(0);
+	const [now, setNow] = (0, import_react.useState)(() => Date.now());
+	(0, import_react.useEffect)(() => {
+		if (cooldownUntil <= Date.now()) return;
+		const t = window.setInterval(() => setNow(Date.now()), 250);
+		return () => window.clearInterval(t);
+	}, [cooldownUntil]);
+	const cooldown = Math.max(0, Math.ceil((cooldownUntil - now) / 1e3));
+	const attach = useAttachments(bunny.say);
+	const [progress, setProgress] = (0, import_react.useState)(null);
+	const fileRef = (0, import_react.useRef)(null);
+	const [dragging, setDragging] = (0, import_react.useState)(false);
+	const [cmdIndex, setCmdIndex] = (0, import_react.useState)(0);
 	async function send() {
-		if (!draft.trim() || banned) return;
-		if (await bunny.sendMessage(draft, replyTo || void 0)) {
+		if (banned || progress !== null) return;
+		if (canCommand && draft.trim().startsWith("/") && !attach.items.length) {
+			const res = await runCommand(bunny, draft);
+			bunny.say(res.message);
+			if (res.ok) setDraft("");
+			return;
+		}
+		if (!draft.trim() && !attach.items.length) return;
+		let media;
+		if (attach.items.length) try {
+			setProgress(0);
+			media = await bunny.uploadMedia(attach.items, false, (d, t) => setProgress(d / t));
+		} catch (e) {
+			bunny.say(e instanceof Error ? e.message : "Upload failed");
+			setProgress(null);
+			return;
+		}
+		const ok = await bunny.sendMessage(draft, replyTo || void 0, media);
+		setProgress(null);
+		if (ok) {
 			setDraft("");
 			setReplyTo(null);
+			attach.clear();
 			stickRef.current = true;
+			if (slow) {
+				setCooldownUntil(Date.now() + slow * 1e3);
+				setNow(Date.now());
+			}
 		}
 	}
 	const typingNames = Object.entries(bunny.typing).filter(([id]) => !bunny.blocked.includes(id)).map(([, t]) => t.name);
 	const count = bunny.people.length;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-		className: "panel lg-panel",
+		className: `panel lg-panel ${dragging ? "dropping" : ""}`,
 		"aria-label": "Server chat",
+		onDragOver: (e) => {
+			if (!e.dataTransfer.types.includes("Files") || banned || locked) return;
+			e.preventDefault();
+			setDragging(true);
+		},
+		onDragLeave: (e) => {
+			if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false);
+		},
+		onDrop: (e) => {
+			e.preventDefault();
+			setDragging(false);
+			if (!banned && !locked) attach.add(e.dataTransfer.files);
+		},
 		children: [
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "panel-head",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "hash",
-					children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Hash, { size: 18 })
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "grow",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "lounge" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: bunny.online ? `${count} online · everyone shares this room` : bunny.status })]
-				})]
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "hash",
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Hash, { size: 18 })
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grow",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "lounge" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: bunny.online ? `${count} online · everyone shares this room` : bunny.status })]
+					}),
+					bunny.room?.locked ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+						className: "chip warn",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Lock, { size: 12 }), " Locked"]
+					}) : null,
+					bunny.room?.slowmode ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+						className: "chip",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Timer, { size: 12 }),
+							" ",
+							bunny.room.slowmode,
+							"s"
+						]
+					}) : null
+				]
 			}),
 			showSearch ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
 				className: "search",
@@ -2376,87 +3240,189 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 							className: "day",
 							children: dayLabel(msg.at)
 						}) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", {
-							className: `msg ${cont ? "cont" : ""} ${mentioned ? "mention" : ""} ${isBanned ? "banned" : ""}`,
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								type: "button",
-								className: "face-btn",
-								onClick: open,
-								"aria-label": `Open ${msg.name}`,
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
-									avatar: info.avatar,
-									color: info.color,
-									label: msg.name
-								})
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								style: { minWidth: 0 },
-								children: [
-									msg.replyTo ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "reply-ref",
-										children: [
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CornerUpLeft, { size: 12 }),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: msg.replyTo.name }),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: msg.replyTo.text })
-										]
-									}) : null,
-									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "who",
+							className: `msg ${cont ? "cont" : ""} ${mentioned ? "mention" : ""} ${isBanned ? "banned" : ""} ${selected === msg.id ? "selected" : ""}`,
+							onClick: (e) => {
+								if (e.target.closest("button, a, textarea, input")) return;
+								setSelected((cur) => cur === msg.id ? null : msg.id);
+							},
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: "face-btn",
+									onClick: open,
+									"aria-label": `Open ${msg.name}`,
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
+										avatar: info.avatar,
+										color: info.color,
+										label: msg.name
+									})
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									style: { minWidth: 0 },
+									children: [
+										msg.replyTo ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "reply-ref",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CornerUpLeft, { size: 12 }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: msg.replyTo.name }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: msg.replyTo.text })
+											]
+										}) : null,
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "who",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													type: "button",
+													className: "name",
+													style: { color: `color-mix(in srgb, ${info.color} 45%, white)` },
+													onClick: open,
+													children: msg.name
+												}),
+												adminMsg ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {}) : null,
+												isBanned ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "tag ban",
+													children: "Banned"
+												}) : null,
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "stamp",
+													children: timeLabel(msg.at, h24)
+												})
+											]
+										}),
+										editing === msg.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "editbox",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
+												value: editText,
+												maxLength: 2e3,
+												autoFocus: true,
+												onChange: (e) => setEditText(e.target.value),
+												onKeyDown: (e) => {
+													if (e.key === "Escape") setEditing(null);
+													if (e.key === "Enter" && !e.shiftKey) {
+														e.preventDefault();
+														bunny.editMessage(msg, editText);
+														setEditing(null);
+													}
+												},
+												"aria-label": "Edit message"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "row",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													className: "gbtn sm primary",
+													type: "button",
+													onClick: () => {
+														bunny.editMessage(msg, editText);
+														setEditing(null);
+													},
+													children: "Save"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													className: "gbtn sm",
+													type: "button",
+													onClick: () => setEditing(null),
+													children: "Cancel"
+												})]
+											})]
+										}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+											className: "text",
+											children: [msg.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RichText, {
+												text: msg.text,
+												selfName: bunny.profile.name
+											}) : null, msg.editedAt ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "edited",
+												children: " (edited)"
+											}) : null]
+										}),
+										msg.media ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MediaGrid, {
+											media: msg.media,
+											load: bunny.loadMedia
+										}) : null,
+										confirmDelete === msg.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "row",
+											style: { marginTop: "0.4rem" },
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												className: "gbtn sm danger",
+												type: "button",
+												onClick: () => {
+													bunny.deleteMessage(msg);
+													setConfirmDelete(null);
+												},
+												children: "Delete"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												className: "gbtn sm",
+												type: "button",
+												onClick: () => setConfirmDelete(null),
+												children: "Keep"
+											})]
+										}) : null,
+										msg.reactions && Object.keys(msg.reactions).length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "reacts",
+											children: Object.entries(msg.reactions).map(([emoji, ids]) => {
+												if (!Array.isArray(ids) || !ids.length || emoji.length > 8) return null;
+												return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+													type: "button",
+													className: ids.includes(me) ? "react mine" : "react",
+													onClick: () => bunny.react(msg, emoji),
+													children: [
+														emoji,
+														" ",
+														ids.length
+													]
+												}, emoji);
+											})
+										}) : null
+									]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "msg-slot",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "msg-actions lg-soft",
+										role: "toolbar",
+										"aria-label": "Message actions",
 										children: [
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-												type: "button",
-												className: "name",
-												style: { color: `color-mix(in srgb, ${info.color} 45%, white)` },
-												onClick: open,
-												children: msg.name
-											}),
-											adminMsg ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {}) : null,
-											isBanned ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "tag ban",
-												children: "Banned"
-											}) : null,
-											bunny.friends[msg.authorId] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "tag friend",
-												children: "Friend"
-											}) : null,
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "stamp",
-												children: timeLabel(msg.at, h24)
-											})
-										]
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-										className: "row-actions lg-soft",
-										children: [
-											QUICK.map((emoji) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 												className: "tiny",
 												type: "button",
-												"aria-label": `React ${emoji}`,
-												onClick: () => bunny.react(msg, emoji),
-												children: emoji
-											}, emoji)),
+												"aria-label": "Add reaction",
+												title: "React",
+												onClick: (e) => {
+													const r = e.currentTarget.getBoundingClientRect();
+													setReactFor({
+														msg,
+														x: r.right - 288,
+														y: r.bottom + 6
+													});
+												},
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SmilePlus, { size: 15 })
+											}),
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 												className: "tiny",
 												type: "button",
 												"aria-label": "Reply",
+												title: "Reply",
 												onClick: () => {
 													setReplyTo(msg);
+													setSelected(null);
 													composerRef.current?.focus();
 												},
-												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CornerUpLeft, { size: 14 })
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CornerUpLeft, { size: 15 })
 											}),
 											mine ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 												className: "tiny",
 												type: "button",
 												"aria-label": "Edit message",
+												title: "Edit",
 												onClick: () => {
 													setEditing(msg.id);
 													setEditText(msg.text);
 													setConfirmDelete(null);
+													setSelected(null);
 												},
-												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pencil, { size: 14 })
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pencil, { size: 15 })
 											}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 												className: "tiny",
 												type: "button",
 												"aria-label": "Copy message",
+												title: "Copy text",
 												onClick: async () => {
 													try {
 														await navigator.clipboard.writeText(msg.text);
@@ -2465,96 +3431,20 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 														bunny.say("Could not copy");
 													}
 												},
-												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Copy, { size: 14 })
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Copy, { size: 15 })
 											}),
 											canDelete ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 												className: "tiny danger",
 												type: "button",
 												"aria-label": "Delete message",
+												title: "Delete",
 												onClick: () => setConfirmDelete(msg.id),
-												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 14 })
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { size: 15 })
 											}) : null
 										]
-									}),
-									editing === msg.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "editbox",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
-											value: editText,
-											maxLength: 2e3,
-											autoFocus: true,
-											onChange: (e) => setEditText(e.target.value),
-											onKeyDown: (e) => {
-												if (e.key === "Escape") setEditing(null);
-												if (e.key === "Enter" && !e.shiftKey) {
-													e.preventDefault();
-													bunny.editMessage(msg, editText);
-													setEditing(null);
-												}
-											},
-											"aria-label": "Edit message"
-										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-											className: "row",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-												className: "gbtn sm primary",
-												type: "button",
-												onClick: () => {
-													bunny.editMessage(msg, editText);
-													setEditing(null);
-												},
-												children: "Save"
-											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-												className: "gbtn sm",
-												type: "button",
-												onClick: () => setEditing(null),
-												children: "Cancel"
-											})]
-										})]
-									}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-										className: "text",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RichText, {
-											text: msg.text,
-											selfName: bunny.profile.name
-										}), msg.editedAt ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "edited",
-											children: " (edited)"
-										}) : null]
-									}),
-									confirmDelete === msg.id ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "row",
-										style: { marginTop: "0.4rem" },
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-											className: "gbtn sm danger",
-											type: "button",
-											onClick: () => {
-												bunny.deleteMessage(msg);
-												setConfirmDelete(null);
-											},
-											children: ["Delete", mine ? "" : ` ${msg.name}'s message`]
-										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-											className: "gbtn sm",
-											type: "button",
-											onClick: () => setConfirmDelete(null),
-											children: "Keep"
-										})]
-									}) : null,
-									msg.reactions && Object.keys(msg.reactions).length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-										className: "reacts",
-										children: Object.entries(msg.reactions).map(([emoji, ids]) => {
-											if (!Array.isArray(ids) || !ids.length || emoji.length > 8) return null;
-											return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-												type: "button",
-												className: ids.includes(me) ? "react mine" : "react",
-												onClick: () => bunny.react(msg, emoji),
-												children: [
-													emoji,
-													" ",
-													ids.length
-												]
-											}, emoji);
-										})
-									}) : null
-								]
-							})]
+									})
+								})
+							]
 						})] }, msg.id);
 					}),
 					query && visible.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
@@ -2580,6 +3470,47 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 				},
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowDown, { size: 14 }), " Latest"]
 			}) : null,
+			reactFor ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Floating, {
+				x: reactFor.x,
+				y: reactFor.y,
+				className: "menu lg react-pop",
+				onClose: () => {
+					setReactFor(null);
+					setMoreEmoji(false);
+				},
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "quick-row",
+					children: [QUICK.map((emoji) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						"aria-label": `React ${emoji}`,
+						onClick: () => {
+							bunny.react(reactFor.msg, emoji);
+							setReactFor(null);
+							setMoreEmoji(false);
+						},
+						children: emoji
+					}, emoji)), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: "more",
+						"aria-label": "More emoji",
+						"aria-expanded": moreEmoji,
+						onClick: () => setMoreEmoji((v) => !v),
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SmilePlus, { size: 17 })
+					})]
+				}), moreEmoji ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "grid",
+					style: { marginTop: "0.35rem" },
+					children: EMOJIS.map((emoji, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => {
+							bunny.react(reactFor.msg, emoji);
+							setReactFor(null);
+							setMoreEmoji(false);
+						},
+						children: emoji
+					}, emoji + i))
+				}) : null]
+			}) : null,
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TypingLine, { names: typingNames }),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "composer-wrap",
@@ -2595,6 +3526,32 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 							}, emoji + i))
 						})]
 					}) : null,
+					showCommands ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "cmds lg",
+						role: "listbox",
+						"aria-label": "Admin commands",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Terminal, { size: 12 }), " Admin commands"] }), suggestions.slice(0, 8).map((c, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							role: "option",
+							"aria-selected": i === Math.min(cmdIndex, suggestions.length - 1),
+							className: "cmd",
+							onMouseDown: (e) => e.preventDefault(),
+							onClick: () => {
+								setDraft(`/${c.name} `);
+								composerRef.current?.focus();
+							},
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("code", { children: [
+								"/",
+								c.name,
+								c.args ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("i", { children: [" ", c.args] }) : null
+							] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: c.help })]
+						}, c.name))]
+					}) : null,
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(AttachTray, {
+						items: attach.items,
+						onRemove: attach.remove,
+						progress
+					}),
 					replyTo ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "replying",
 						children: [
@@ -2634,21 +3591,83 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 								},
 								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Smile, { size: 20 })
 							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								className: "gbtn icon",
+								type: "button",
+								"aria-label": "Attach images or video",
+								title: "Attach images or video",
+								disabled: !bunny.online || banned || locked || progress !== null,
+								onClick: () => fileRef.current?.click(),
+								style: {
+									background: "transparent",
+									boxShadow: "none"
+								},
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Paperclip, { size: 19 })
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								ref: fileRef,
+								type: "file",
+								accept: ACCEPT,
+								multiple: true,
+								hidden: true,
+								onChange: (e) => {
+									attach.add(e.target.files);
+									e.target.value = "";
+								}
+							}),
+							canCommand ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								className: "gbtn icon cmd-btn",
+								type: "button",
+								"aria-label": "Admin commands",
+								title: "Admin commands",
+								onClick: () => {
+									setDraft("/");
+									composerRef.current?.focus();
+								},
+								style: {
+									background: "transparent",
+									boxShadow: "none"
+								},
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Terminal, { size: 18 })
+							}) : null,
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 								ref: composerRef,
 								value: draft,
 								maxLength: 2e3,
-								disabled: !bunny.online || banned,
-								placeholder: banned ? "You're banned from this server" : bunny.online ? "Message #lounge" : "Waiting for the room…",
+								disabled: !bunny.online || banned || locked || cooldown > 0,
+								placeholder: banned ? "You're banned from this server" : locked ? "Chat is locked by an admin" : cooldown > 0 ? `Slowmode: wait ${cooldown}s` : !bunny.online ? "Waiting for the room…" : canCommand ? "Message #lounge, or type / for commands" : "Message #lounge",
 								"aria-label": "Message",
 								onChange: (e) => {
 									setDraft(e.target.value);
-									if (e.target.value) bunny.pingTyping();
+									setCmdIndex(0);
+									if (e.target.value && !e.target.value.startsWith("/")) bunny.pingTyping();
+								},
+								onPaste: (e) => {
+									const files = [...e.clipboardData.files];
+									if (files.length) {
+										e.preventDefault();
+										attach.add(files);
+									}
 								},
 								onKeyDown: (e) => {
+									if (showCommands && !/\s/.test(draft.slice(1))) {
+										if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+											e.preventDefault();
+											const n = Math.min(suggestions.length, 8);
+											setCmdIndex((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+											return;
+										}
+										if (e.key === "Tab" || e.key === "Enter" && suggestions.length && draft.length > 1 && suggestions[0].name !== draft.slice(1).toLowerCase()) {
+											e.preventDefault();
+											const pick = suggestions[Math.min(cmdIndex, suggestions.length - 1)];
+											if (pick) setDraft(`/${pick.name} `);
+											return;
+										}
+									}
 									if (e.key === "Escape") {
 										setPicker(false);
 										setReplyTo(null);
+										if (draft.startsWith("/")) setDraft("");
 									}
 									if (e.key === "ArrowUp" && !draft) {
 										const last = [...bunny.messages].reverse().find((m) => m.authorId === me);
@@ -2663,7 +3682,7 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 								className: "send",
 								type: "submit",
-								disabled: !bunny.online || !draft.trim() || banned,
+								disabled: !bunny.online || !draft.trim() && !attach.items.length || banned || locked || cooldown > 0 || progress !== null,
 								"aria-label": "Send",
 								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Send, { size: 18 })
 							})
@@ -2699,9 +3718,26 @@ function DirectView({ bunny, openMenu }) {
 	}, [peer]);
 	const blocked = !!peer && bunny.blocked.includes(peer);
 	const banned = bunny.isBanned(me);
+	const attach = useAttachments(bunny.say);
+	const [progress, setProgress] = (0, import_react.useState)(null);
+	const fileRef = (0, import_react.useRef)(null);
 	async function send() {
-		if (!peer || !draft.trim()) return;
-		if (await bunny.sendDirect(peer, draft)) setDraft("");
+		if (!peer || !draft.trim() && !attach.items.length || progress !== null) return;
+		let media;
+		if (attach.items.length) try {
+			setProgress(0);
+			media = await bunny.uploadMedia(attach.items, true, (d, t) => setProgress(d / t));
+		} catch (e) {
+			bunny.say(e instanceof Error ? e.message : "Upload failed");
+			setProgress(null);
+			return;
+		}
+		const ok = await bunny.sendDirect(peer, draft, media);
+		setProgress(null);
+		if (ok) {
+			setDraft("");
+			attach.clear();
+		}
 	}
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: `direct ${peer ? "has-peer" : ""}`,
@@ -2792,7 +3828,7 @@ function DirectView({ bunny, openMenu }) {
 												overflow: "hidden",
 												textOverflow: "ellipsis"
 											},
-											children: c.last ? `${c.last.from === me ? "You: " : ""}${c.last.text}` : p.online ? "Online · say hi" : "Offline"
+											children: c.last ? `${c.last.from === me ? "You: " : ""}${c.last.text || (c.last.media?.[0]?.kind === "video" ? "Sent a video" : "Sent a photo")}` : p.online ? "Online · say hi" : "Offline"
 										}), c.last ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("em", { children: ago(c.last.at) }) : null]
 									})]
 								}),
@@ -2889,12 +3925,16 @@ function DirectView({ bunny, openMenu }) {
 									className: "day",
 									children: dayLabel(d.at)
 								}) : gap ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bubble-gap" }) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: `bubble ${mine ? "mine" : ""}`,
+									className: `bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""}`,
 									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RichText, {
+										d.media ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MediaGrid, {
+											media: d.media,
+											load: bunny.loadMedia
+										}) : null,
+										d.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RichText, {
 											text: d.text,
 											selfName: bunny.profile.name
-										}),
+										}) : null,
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("time", { children: timeLabel(d.at, bunny.settings.clock24) }),
 										mine ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 											className: "tiny unsend",
@@ -2919,32 +3959,70 @@ function DirectView({ bunny, openMenu }) {
 						}) : null
 					]
 				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "composer-wrap",
 					style: { paddingTop: "0.5rem" },
-					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(AttachTray, {
+						items: attach.items,
+						onRemove: attach.remove,
+						progress
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
 						className: "composer lg",
 						onSubmit: (e) => {
 							e.preventDefault();
 							send();
 						},
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-							ref: inputRef,
-							value: draft,
-							maxLength: 2e3,
-							style: { paddingLeft: "0.8rem" },
-							disabled: blocked || banned || !bunny.online,
-							placeholder: blocked ? "You blocked this person" : banned ? "You're banned" : `Message ${info.name}`,
-							"aria-label": `Message ${info.name}`,
-							onChange: (e) => setDraft(e.target.value)
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-							className: "send",
-							type: "submit",
-							disabled: !draft.trim() || blocked || banned || !bunny.online,
-							"aria-label": "Send",
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Send, { size: 18 })
-						})]
-					})
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								className: "gbtn icon",
+								type: "button",
+								"aria-label": "Attach images or video",
+								title: "Attach images or video",
+								disabled: blocked || banned || !bunny.online || progress !== null,
+								onClick: () => fileRef.current?.click(),
+								style: {
+									background: "transparent",
+									boxShadow: "none"
+								},
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Paperclip, { size: 19 })
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								ref: fileRef,
+								type: "file",
+								accept: ACCEPT,
+								multiple: true,
+								hidden: true,
+								onChange: (e) => {
+									attach.add(e.target.files);
+									e.target.value = "";
+								}
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								ref: inputRef,
+								onPaste: (e) => {
+									const files = [...e.clipboardData.files];
+									if (files.length) {
+										e.preventDefault();
+										attach.add(files);
+									}
+								},
+								value: draft,
+								maxLength: 2e3,
+								style: { paddingLeft: "0.2rem" },
+								disabled: blocked || banned || !bunny.online,
+								placeholder: blocked ? "You blocked this person" : banned ? "You're banned" : `Message ${info.name}`,
+								"aria-label": `Message ${info.name}`,
+								onChange: (e) => setDraft(e.target.value)
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								className: "send",
+								type: "submit",
+								disabled: !draft.trim() && !attach.items.length || blocked || banned || !bunny.online || progress !== null,
+								"aria-label": "Send",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Send, { size: 18 })
+							})
+						]
+					})]
 				})
 			] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "empty",
@@ -2968,10 +4046,6 @@ function DirectView({ bunny, openMenu }) {
 }
 function ModView({ bunny, openMenu }) {
 	const [tab, setTab] = (0, import_react.useState)("overview");
-	const logs = (0, import_react.useMemo)(() => Object.values(bunny.logs).sort((a, b) => b.at - a.at), [bunny.logs]);
-	const activeBans = Object.values(bunny.bans).filter((b) => b.kind === "ban" && !bunny.admins[b.target]);
-	const warns = Object.values(bunny.warnsIssued).sort((a, b) => b.at - a.at);
-	const dmCount = Object.keys(bunny.allDms).length;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 		className: "panel lg-panel",
 		"aria-label": "Admin panel",
@@ -2979,28 +4053,22 @@ function ModView({ bunny, openMenu }) {
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "panel-head",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "hash",
-					style: { color: "#ffcf5c" },
+					className: "hash gold",
 					children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShieldCheck, { size: 18 })
 				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "grow",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h2", {
-						style: {
-							display: "flex",
-							alignItems: "center",
-							gap: "0.45rem"
-						},
-						children: ["Moderation ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {})]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Signed actions. Everyone's app checks them against the admin key." })]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Admin panel" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "Signed in as admin · actions are verified on every device" })]
 				})]
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "mod-tabs",
+				className: "tabbar",
+				role: "tablist",
+				"aria-label": "Admin sections",
 				children: [
 					{
 						id: "overview",
 						label: "Overview",
-						icon: ShieldCheck
+						icon: LayoutGrid
 					},
 					{
 						id: "members",
@@ -3014,70 +4082,28 @@ function ModView({ bunny, openMenu }) {
 					},
 					{
 						id: "dms",
-						label: "Direct messages",
+						label: "DMs",
 						icon: MessagesSquare
 					},
 					{
 						id: "server",
-						label: "Wallpaper & notice",
+						label: "Look",
 						icon: Image$1
 					}
 				].map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 					type: "button",
-					className: `seg ${tab === t.id ? "active" : ""}`,
+					role: "tab",
+					"aria-label": t.label,
+					"aria-selected": tab === t.id,
+					className: "tab",
 					onClick: () => setTab(t.id),
-					style: { flex: "none" },
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(t.icon, { size: 15 }), t.label]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(t.icon, { size: 15 }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: t.label })]
 				}, t.id))
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "mod-body",
 				children: [
-					tab === "overview" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "stats",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "stat",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: bunny.people.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Online now" })]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "stat",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: bunny.messages.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Messages in #lounge" })]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "stat",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: activeBans.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Active bans" })]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "stat",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: warns.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Warnings issued" })]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "stat",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: logs.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Logged deletes & edits" })]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "stat",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: dmCount }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Direct messages seen" })]
-								})
-							]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "group-title",
-							children: "Recent activity"
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "group",
-							children: [logs.slice(0, 5).map((l) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogRow, {
-								bunny,
-								log: l
-							}, l.key)), logs.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "empty",
-								children: "Deleted and edited messages will appear here."
-							}) : null]
-						})
-					] }) : null,
+					tab === "overview" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Overview, { bunny }) : null,
 					tab === "members" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Members, {
 						bunny,
 						openMenu
@@ -3089,6 +4115,219 @@ function ModView({ bunny, openMenu }) {
 			})
 		]
 	});
+}
+function Overview({ bunny }) {
+	const [text, setText] = (0, import_react.useState)("");
+	const [clearN, setClearN] = (0, import_react.useState)("10");
+	const [confirmClear, setConfirmClear] = (0, import_react.useState)(false);
+	const logs = Object.values(bunny.logs);
+	const activeBans = Object.values(bunny.bans).filter((b) => b.kind === "ban" && !bunny.admins[b.target]);
+	const slow = bunny.room?.slowmode || 0;
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+		/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "stats",
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "stat",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: bunny.people.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Online" })]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "stat",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: bunny.messages.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Messages" })]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "stat",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: activeBans.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Bans" })]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "stat",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: Object.keys(bunny.warnsIssued).length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Warnings" })]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "stat",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: logs.length }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Logged changes" })]
+				})
+			]
+		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			className: "group-title",
+			children: "Broadcast"
+		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			className: "group",
+			children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				className: "opt stack",
+				onSubmit: async (e) => {
+					e.preventDefault();
+					if (await bunny.flashAll(text, "m")) {
+						bunny.say("Message flashed to everyone");
+						setText("");
+					}
+				},
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "hint",
+						children: "Flash pops up in the middle of everyone's screen for 3 seconds. Hint slides in at the top."
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						className: "input",
+						value: text,
+						maxLength: 200,
+						placeholder: "Server restarting in 5 minutes!",
+						onChange: (e) => setText(e.target.value),
+						"aria-label": "Broadcast text"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "row",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							className: "gbtn primary",
+							type: "submit",
+							disabled: !text.trim(),
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Zap, { size: 15 }), " Flash · /m"]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							className: "gbtn",
+							type: "button",
+							disabled: !text.trim(),
+							onClick: async () => {
+								if (await bunny.flashAll(text, "h")) {
+									bunny.say("Hint sent");
+									setText("");
+								}
+							},
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Megaphone, { size: 15 }), " Hint · /h"]
+						})]
+					})
+				]
+			})
+		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			className: "group-title",
+			children: "Room controls"
+		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "group",
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "opt",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "txt",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Lock chat" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Only admins can send in #lounge." })]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, {
+						label: "Lock chat",
+						on: !!bunny.room?.locked,
+						onChange: (v) => void bunny.setRoomControls({ locked: v })
+					})]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "opt",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "txt",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Slowmode" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Time between messages for each person." })]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "choices",
+						role: "group",
+						"aria-label": "Slowmode",
+						children: [
+							0,
+							5,
+							15,
+							30,
+							60
+						].map((n) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							"aria-pressed": slow === n,
+							onClick: () => void bunny.setRoomControls({ slowmode: n }),
+							children: n ? `${n}s` : "Off"
+						}, n))
+					})]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "opt",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "txt",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Clear chat" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Delete the newest messages. They still show up in the logs." })]
+					}), confirmClear ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "row",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							className: "gbtn sm",
+							type: "button",
+							onClick: () => setConfirmClear(false),
+							children: "Cancel"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							className: "gbtn sm danger",
+							type: "button",
+							onClick: () => {
+								bunny.clearRecent(Number(clearN));
+								setConfirmClear(false);
+							},
+							children: ["Delete ", clearN]
+						})]
+					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "row",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "choices",
+							role: "group",
+							"aria-label": "How many",
+							children: [
+								"10",
+								"25",
+								"50"
+							].map((n) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								"aria-pressed": clearN === n,
+								onClick: () => setClearN(n),
+								children: n
+							}, n))
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							className: "gbtn sm danger",
+							type: "button",
+							onClick: () => setConfirmClear(true),
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eraser, { size: 14 }), " Clear"]
+						})]
+					})]
+				})
+			]
+		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			className: "group-title",
+			children: "Recent admin actions"
+		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "group",
+			children: [bunny.modHistory.slice(0, 8).map((h) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "opt",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "txt",
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+						h.byName,
+						" ",
+						h.text
+					] })
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "muted",
+					children: ago(h.at)
+				})]
+			}, h.key)), bunny.modHistory.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "empty",
+				children: "Actions you and other admins take will show up here."
+			}) : null]
+		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			className: "group-title",
+			children: "Chat commands"
+		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			className: "group cmd-sheet",
+			children: COMMANDS.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "cmd-line",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("code", { children: [
+					"/",
+					c.name,
+					c.args ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("i", { children: [" ", c.args] }) : null
+				] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: c.help })]
+			}, c.name))
+		})
+	] });
 }
 function LogRow({ bunny, log }) {
 	const h24 = bunny.settings.clock24;
@@ -3211,7 +4450,7 @@ function Members({ bunny, openMenu }) {
 				const w = warnCount(p.id);
 				const ban = bunny.bans[p.id];
 				return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "opt",
+					className: "opt keep",
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
 							avatar: p.avatar,
@@ -3258,9 +4497,11 @@ function Members({ bunny, openMenu }) {
 							type: "button",
 							onClick: () => void bunny.ban(p.id, p.name, "", "unban"),
 							children: "Unban"
-						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-							className: "gbtn sm",
+						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							className: "gbtn sm icon",
 							type: "button",
+							"aria-label": `Manage ${p.name}`,
+							title: "Warn, kick or ban",
 							onClick: (e) => {
 								const r = e.currentTarget.getBoundingClientRect();
 								openMenu({
@@ -3269,7 +4510,7 @@ function Members({ bunny, openMenu }) {
 									y: r.bottom + 6
 								});
 							},
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { size: 13 }), " Actions"]
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ellipsis, { size: 16 })
 						}) : null
 					]
 				}, p.id);
@@ -4472,6 +5713,12 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 					onClick: () => setMode("warn"),
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { size: 17 }), " Warn user"]
 				}),
+				info.online ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+					className: "menu-item warn",
+					type: "button",
+					onClick: () => setMode("kick"),
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { size: 17 }), " Kick from room"]
+				}) : null,
 				banned ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 					className: "menu-item",
 					type: "button",
@@ -4493,7 +5740,8 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 				if (mode === "warn") {
 					if (!reason.trim()) return;
 					bunny.warn(target.id, info.name, reason);
-				} else bunny.ban(target.id, info.name, reason || "Broke the server rules");
+				} else if (mode === "kick") bunny.kick(target.id, info.name, reason);
+				else bunny.ban(target.id, info.name, reason || "Broke the server rules");
 				onClose();
 			},
 			children: [
@@ -4507,7 +5755,7 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShieldAlert, { size: 13 }),
 						" ",
-						mode === "warn" ? `Warn ${info.name}` : `Ban ${info.name}`
+						mode === "warn" ? `Warn ${info.name}` : mode === "kick" ? `Kick ${info.name}` : `Ban ${info.name}`
 					]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
@@ -4515,7 +5763,7 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 					autoFocus: true,
 					maxLength: 300,
 					value: reason,
-					placeholder: mode === "warn" ? "What should they know?" : "Reason (shown to them)",
+					placeholder: mode === "warn" ? "What should they know?" : "Reason (optional, shown to them)",
 					onChange: (e) => setReason(e.target.value)
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -4530,7 +5778,7 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 						className: mode === "ban" ? "gbtn sm danger" : "gbtn sm primary",
 						type: "submit",
 						disabled: mode === "warn" && !reason.trim(),
-						children: mode === "warn" ? "Send warning" : "Ban"
+						children: mode === "warn" ? "Send warning" : mode === "kick" ? "Kick" : "Ban"
 					})]
 				})
 			]
@@ -4592,6 +5840,13 @@ function Room({ mode = "user" }) {
 		setRefract(!!brands?.some((b) => b.brand === "Chromium"));
 		if (window.innerWidth < 860) setMembersOpen(false);
 	}, []);
+	const flash = bunny.flash;
+	const clearFlash = bunny.clearFlash;
+	(0, import_react.useEffect)(() => {
+		if (!flash) return;
+		const t = window.setTimeout(clearFlash, flash.style === "m" ? 4100 : 5600);
+		return () => window.clearTimeout(t);
+	}, [flash, clearFlash]);
 	(0, import_react.useEffect)(() => {
 		const unread = bunny.serverUnread + bunny.directUnread;
 		document.title = `${unread ? `(${unread}) ` : ""}${mode === "admin" ? "Admin · " : ""}Bunny RTC`;
@@ -4868,6 +6123,75 @@ function Room({ mode = "user" }) {
 			bunny.toast ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 				className: "toast lg",
 				children: bunny.toast
+			}) : null,
+			flash?.style === "m" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "flash-m",
+				role: "alert",
+				"aria-live": "assertive",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flash-card lg",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+						className: "flash-from",
+						children: ["Message from ", flash.byName]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: flash.text })]
+				})
+			}, flash.id) : null,
+			flash?.style === "h" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "flash-h lg",
+				role: "status",
+				"aria-live": "polite",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Megaphone, { size: 15 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("b", { children: [flash.byName, ":"] }),
+					" ",
+					flash.text
+				] })]
+			}, flash.id) : null,
+			bunny.kicked ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "backdrop",
+				style: {
+					background: "rgba(2,6,10,0.55)",
+					zIndex: 60
+				},
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "modal lg",
+					role: "alertdialog",
+					"aria-labelledby": "kick-title",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "gate-icon",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { size: 24 })
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+							id: "kick-title",
+							children: "You were kicked"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+							style: { margin: "0.5rem 0 0.8rem" },
+							children: [bunny.kicked.byName, " removed you from the room."]
+						}),
+						bunny.kicked.reason ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "callout",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+								"“",
+								bunny.kicked.reason,
+								"”"
+							] })]
+						}) : null,
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "row",
+							style: {
+								justifyContent: "flex-end",
+								marginTop: "0.9rem"
+							},
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								className: "gbtn primary",
+								type: "button",
+								onClick: () => window.location.reload(),
+								children: "Rejoin"
+							})
+						})
+					]
+				})
 			}) : null,
 			bunny.warnings[0] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 				className: "backdrop",
