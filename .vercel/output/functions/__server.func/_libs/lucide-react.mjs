@@ -189,6 +189,26 @@ var Clock = createLucideIcon("clock", [["circle", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var CloudUpload = createLucideIcon("cloud-upload", [
+	["path", {
+		d: "M12 13v8",
+		key: "1l5pq0"
+	}],
+	["path", {
+		d: "M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242",
+		key: "1pljnt"
+	}],
+	["path", {
+		d: "m8 17 4-4 4 4",
+		key: "1quai1"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Copy = createLucideIcon("copy", [["rect", {
 	width: "14",
 	height: "14",
@@ -926,6 +946,34 @@ var Smile = createLucideIcon("smile", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Sparkles = createLucideIcon("sparkles", [
+	["path", {
+		d: "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z",
+		key: "4pj2yx"
+	}],
+	["path", {
+		d: "M20 3v4",
+		key: "1olli1"
+	}],
+	["path", {
+		d: "M22 5h-4",
+		key: "1gvqau"
+	}],
+	["path", {
+		d: "M4 17v2",
+		key: "vumght"
+	}],
+	["path", {
+		d: "M5 18H3",
+		key: "zchphs"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Terminal = createLucideIcon("terminal", [["polyline", {
 	points: "4 17 10 11 4 5",
 	key: "akl6gq"
@@ -1016,6 +1064,29 @@ var TriangleAlert = createLucideIcon("triangle-alert", [
 	["path", {
 		d: "M12 17h.01",
 		key: "p32p05"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Upload = createLucideIcon("upload", [
+	["path", {
+		d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4",
+		key: "ih7n3h"
+	}],
+	["polyline", {
+		points: "17 8 12 3 7 8",
+		key: "t8dd8p"
+	}],
+	["line", {
+		x1: "12",
+		x2: "12",
+		y1: "3",
+		y2: "15",
+		key: "widbto"
 	}]
 ]);
 /**
@@ -1172,4 +1243,4 @@ var Zap = createLucideIcon("zap", [["path", {
 	key: "1xq2db"
 }]]);
 //#endregion
-export { ArrowLeft as $, LogIn as A, Eye as B, PawPrint as C, MessageCircle as D, MessagesSquare as E, KeyRound as F, CornerUpLeft as G, Eraser as H, Inbox as I, Check as J, Copy as K, Image as L, LockKeyhole as M, LoaderCircle as N, Megaphone as O, LayoutGrid as P, ArrowRight as Q, ImageOff as R, Pencil as S, Palette as T, Ellipsis as U, EyeOff as V, Download as W, Ban as X, Bell as Y, AtSign as Z, Settings as _, UserX as a, ScrollText as b, TriangleAlert as c, Terminal as d, ArrowDown as et, Smile as f, ShieldAlert as g, ShieldCheck as h, User as i, Lock as j, LogOut as k, Trash2 as l, Shield as m, X as n, UserPlus as o, SmilePlus as p, Clock as q, Users as r, UserMinus as s, Zap as t, Timer as u, Send as v, Paperclip as w, RotateCcw as x, Search as y, Hash as z };
+export { Ban as $, Megaphone as A, ImageOff as B, RotateCcw as C, Palette as D, Paperclip as E, LoaderCircle as F, Ellipsis as G, Eye as H, LayoutGrid as I, Copy as J, Download as K, KeyRound as L, LogIn as M, Lock as N, MessagesSquare as O, LockKeyhole as P, Bell as Q, Inbox as R, ScrollText as S, PawPrint as T, EyeOff as U, Hash as V, Eraser as W, Clock as X, CloudUpload as Y, Check as Z, ShieldCheck as _, UserX as a, Send as b, Upload as c, Timer as d, AtSign as et, Terminal as f, Shield as g, SmilePlus as h, User as i, LogOut as j, MessageCircle as k, TriangleAlert as l, Smile as m, X as n, ArrowLeft as nt, UserPlus as o, Sparkles as p, CornerUpLeft as q, Users as r, ArrowDown as rt, UserMinus as s, Zap as t, ArrowRight as tt, Trash2 as u, ShieldAlert as v, Pencil as w, Search as x, Settings as y, Image as z };

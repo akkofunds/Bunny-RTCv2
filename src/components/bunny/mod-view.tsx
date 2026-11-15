@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
-import { ArrowLeft, Ban, Eraser, Image as ImageIcon, LayoutGrid, Megaphone, MessagesSquare, MoreHorizontal, RotateCcw, ScrollText, Search, ShieldCheck, TriangleAlert, Users, Zap } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { ArrowLeft, Ban, Eraser, Image as ImageIcon, LayoutGrid, Megaphone, MessagesSquare, MoreHorizontal, RotateCcw, ScrollText, Search, ShieldCheck, TriangleAlert, Upload, UploadCloud, Users, Zap } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import { PRESETS, threadKey } from "@/lib/bunny/types";
-import { AdminTag, Face, Toggle, ago, shrinkWallpaper, timeLabel } from "./ui";
+import { Face, RoleBadge, Toggle, ago, timeLabel } from "./ui";
 import { COMMANDS } from "./commands";
+import { ACCEPT } from "./media-view";
+import { prepareFile } from "@/lib/bunny/media";
 import type { MenuTarget } from "./user-menu";
 
 type ModTab = "overview" | "members" | "logs" | "dms" | "server";
@@ -79,6 +81,8 @@ function Overview({ bunny }: { bunny: Bunny }) {
           <span>Logged changes</span>
         </div>
       </div>
+
+      <MyTag bunny={bunny} />
 
       <div className="group-title">Broadcast</div>
       <div className="group">
@@ -302,11 +306,12 @@ function Members({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: MenuTarget) 
           const ban = bunny.bans[p.id];
           return (
             <div className="opt keep" key={p.id}>
-              <Face avatar={p.avatar} color={p.color} label={p.name} status={p.online ? p.status : undefined} size="2.2rem" />
+              <Face avatar={p.avatar} anim={p.anim} color={p.color} label={p.name} status={p.online ? p.status : undefined} size="2.2rem" />
               <div className="txt">
                 <strong style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
                   {p.name}
-                  {bunny.admins[p.id] ? <AdminTag /> : null}
+                  <RoleBadge role={p.role} admin={!!bunny.admins[p.id]} />
+                  {bunny.perks[p.id]?.animated && !bunny.admins[p.id] ? <span className="pill-kind">Animated PFP</span> : null}
                   {banned ? <span className="tag ban">Banned</span> : null}
                   {w ? (
                     <span className="pill-kind" style={{ color: "#ffd98a" }}>
@@ -452,35 +457,88 @@ function Dms({ bunny }: { bunny: Bunny }) {
 
 function ServerLook({ bunny }: { bunny: Bunny }) {
   const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [drag, setDrag] = useState(false);
   const [notice, setNotice] = useState(bunny.announce?.text || "");
+  const fileRef = useRef<HTMLInputElement>(null);
   const wp = bunny.wallpaper;
-  const current = !wp || wp.mode === "default" ? "default" : wp.mode === "preset" ? wp.value : "image";
+  const current = !wp || wp.mode === "default" ? "default" : wp.mode === "preset" ? wp.value : "custom";
+
+  async function applyFile(file?: File | null) {
+    if (!file || progress !== null) return;
+    try {
+      const prepared = await prepareFile(file);
+      setProgress(0);
+      const [ref] = await bunny.uploadMedia([prepared], false, (d, t) => setProgress(d / t));
+      await bunny.setGlobalWallpaper("media", undefined, ref);
+    } catch (e) {
+      bunny.say(e instanceof Error ? e.message : "That file can't be used");
+    } finally {
+      setProgress(null);
+    }
+  }
+
   return (
     <>
       <div className="group-title">Wallpaper for everyone</div>
       <div className="group">
+        <div
+          className={`dropzone ${drag ? "over" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDrag(true);
+          }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDrag(false);
+            void applyFile(e.dataTransfer.files[0]);
+          }}
+        >
+          <UploadCloud size={26} />
+          <strong>{progress !== null ? `Uploading ${Math.round(progress * 100)}%` : "Drop an image or video here"}</strong>
+          <span>PNG, JPG, GIF, WebP or MP4 / WebM up to 8 MB. Videos loop silently.</span>
+          {progress !== null ? (
+            <div className="tray-progress" style={{ width: "100%", maxWidth: "18rem" }}>
+              <i style={{ width: `${Math.round(progress * 100)}%` }} />
+            </div>
+          ) : (
+            <button className="gbtn primary" type="button" onClick={() => fileRef.current?.click()}>
+              <Upload size={15} /> Choose file
+            </button>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept={ACCEPT}
+            hidden
+            onChange={(e) => {
+              void applyFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </div>
         <div className="wall-grid">
           <button type="button" className="wall" style={{ backgroundImage: "url(/home.jpg)" }} aria-pressed={current === "default"} onClick={() => void bunny.setGlobalWallpaper("default")}>
-            Fjord (default)
+            Fjord
           </button>
           {Object.entries(PRESETS).map(([key, p]) => (
             <button key={key} type="button" className="wall" style={{ background: p.css }} aria-pressed={current === key} onClick={() => void bunny.setGlobalWallpaper("preset", key)}>
               {p.label}
             </button>
           ))}
-          {wp?.mode === "image" && wp.value ? (
-            <button type="button" className="wall" style={{ backgroundImage: `url("${wp.value}")` }} aria-pressed>
-              Custom
-            </button>
+          {current === "custom" ? (
+            <div className="wall custom" aria-pressed>
+              <ImageIcon size={16} /> Custom
+            </div>
           ) : null}
         </div>
         <div className="opt stack">
-          <span className="label">Use any image</span>
+          <span className="label">Or use an image link</span>
           <div className="row">
             <input className="input" style={{ flex: 1, minWidth: "12rem" }} value={url} placeholder="https://…/photo.jpg" onChange={(e) => setUrl(e.target.value)} />
             <button
-              className="gbtn primary"
+              className="gbtn"
               type="button"
               disabled={!url.trim()}
               onClick={() => {
@@ -488,25 +546,8 @@ function ServerLook({ bunny }: { bunny: Bunny }) {
                 setUrl("");
               }}
             >
-              Apply link
+              Apply
             </button>
-            <label className="gbtn file">
-              {busy ? "Preparing…" : "Upload image"}
-              <input
-                type="file"
-                accept="image/*"
-                disabled={busy}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setBusy(true);
-                  const data = await shrinkWallpaper(file);
-                  setBusy(false);
-                  if (data) void bunny.setGlobalWallpaper("image", data);
-                  else bunny.say("That image is too large to share");
-                }}
-              />
-            </label>
           </div>
         </div>
         <div className="opt">
@@ -522,11 +563,11 @@ function ServerLook({ bunny }: { bunny: Bunny }) {
       <div className="group-title">Server announcement</div>
       <div className="group">
         <div className="opt stack">
-          <span style={{ fontSize: "0.8rem", color: "var(--color-faint)" }}>Pinned under the top bar for everyone.</span>
+          <span className="hint">Pinned under the top bar for everyone.</span>
           <textarea className="input" maxLength={240} value={notice} placeholder="Welcome! Be kind." onChange={(e) => setNotice(e.target.value)} />
           <div className="row">
             <button className="gbtn primary" type="button" disabled={!notice.trim()} onClick={() => void bunny.setAnnouncement(notice)}>
-              <Megaphone size={15} /> Post announcement
+              <Megaphone size={15} /> Post
             </button>
             {bunny.announce?.text ? (
               <button
@@ -541,6 +582,50 @@ function ServerLook({ bunny }: { bunny: Bunny }) {
               </button>
             ) : null}
           </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function MyTag({ bunny }: { bunny: Bunny }) {
+  const me = bunny.identity?.id || "";
+  const mine = bunny.perks[me]?.role;
+  const [text, setText] = useState(mine?.text || "Admin");
+  const [color, setColor] = useState(mine?.color || "#ffc35c");
+  return (
+    <>
+      <div className="group-title">Your tag</div>
+      <div className="group">
+        <div className="opt">
+          <div className="txt">
+            <strong>Shown next to your name</strong>
+            <span>Any text and any color. Everyone sees it.</span>
+          </div>
+          <RoleBadge role={text.trim() ? { text: text.trim(), color } : null} admin />
+        </div>
+        <div className="opt">
+          <input className="input" style={{ flex: 1, minWidth: "8rem" }} value={text} maxLength={18} placeholder="Owner" onChange={(e) => setText(e.target.value)} aria-label="Tag text" />
+          <label className="color-pick" title="Tag color">
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Tag color" />
+            <span style={{ background: color }} />
+          </label>
+          <button className="gbtn primary" type="button" disabled={!text.trim()} onClick={() => void bunny.setPerk(me, bunny.profile.name, true, { text, color })}>
+            Save
+          </button>
+          {mine ? (
+            <button
+              className="gbtn"
+              type="button"
+              onClick={() => {
+                setText("Admin");
+                setColor("#ffc35c");
+                void bunny.setPerk(me, bunny.profile.name, true, null);
+              }}
+            >
+              Reset
+            </button>
+          ) : null}
         </div>
       </div>
     </>

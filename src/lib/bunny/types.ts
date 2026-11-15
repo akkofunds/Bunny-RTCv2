@@ -46,6 +46,7 @@ export type Msg = {
   replyTo?: { id: string; name: string; text: string };
   media?: MediaRef[];
   sig?: string;
+  pending?: boolean;
 };
 
 export type Person = {
@@ -56,6 +57,7 @@ export type Person = {
   bio?: string;
   status?: Status;
   box?: Point;
+  anim?: MediaRef;
   ts?: number;
   sig?: string;
   at: number;
@@ -91,7 +93,9 @@ export type ModLog = {
 
 export type BanRec = { kind: "ban" | "unban"; target: string; targetName: string; reason: string; at: number; by: string; byName: string };
 export type WarnRec = { kind: "warn"; id: string; target: string; targetName: string; reason: string; at: number; by: string; byName: string };
-export type WallpaperRec = { kind: "wallpaper"; mode: "default" | "preset" | "image"; value?: string; at: number; by: string; byName: string };
+export type WallpaperRec = { kind: "wallpaper"; mode: "default" | "preset" | "image" | "media"; value?: string; media?: MediaRef; at: number; by: string; byName: string };
+export type RoleTag = { text: string; color: string };
+export type PerkRec = { kind: "perk"; target: string; targetName: string; animated: boolean; role: RoleTag | null; at: number; by: string; byName: string };
 export type RoomRec = { kind: "room"; slowmode: number; locked: boolean; at: number; by: string; byName: string };
 export type FlashRec = { kind: "flash"; id: string; style: "m" | "h"; text: string; at: number; by: string; byName: string };
 export type KickRec = { kind: "kick"; target: string; targetName: string; reason: string; at: number; by: string; byName: string };
@@ -99,7 +103,7 @@ export type AnnounceRec = { kind: "announce"; text: string; at: number; by: stri
 
 export type AdminSession = { id: string; cert: Cert; escrow: PrivJwk };
 
-export type Profile = { name: string; avatar?: string; bio: string; color: string };
+export type Profile = { name: string; avatar?: string; anim?: MediaRef; bio: string; color: string };
 
 export type Settings = {
   sounds: boolean;
@@ -205,6 +209,27 @@ export function safeWallpaperUrl(value: unknown) {
   if (/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) return value;
   if (/^https:\/\/[^\s"'()\\<>]+$/.test(value) && value.length < 2000) return value;
   return null;
+}
+
+/** Readable text color (dark or white) for any background hex. */
+export function inkFor(hex: string) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return "#05231d";
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => {
+    const c = parseInt(h, 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.4 ? "#0b1014" : "#ffffff";
+}
+
+export function cleanRole(value: unknown): RoleTag | null {
+  const r = value as RoleTag;
+  if (!r || typeof r.text !== "string" || typeof r.color !== "string") return null;
+  // eslint-disable-next-line no-control-regex
+  const text = r.text.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 18);
+  if (!text || !/^#[0-9a-fA-F]{6}$/.test(r.color)) return null;
+  return { text, color: r.color };
 }
 
 export function threadKey(a: string, b: string) {

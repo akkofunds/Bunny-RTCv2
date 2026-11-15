@@ -1,9 +1,9 @@
 import { i as __toESM, n as __exportAll } from "../_runtime.mjs";
 import { J as require_react, _ as lazyRouteComponent, b as useRouter, f as Scripts, g as Outlet, h as createRouter, p as HeadContent, v as createFileRoute, x as require_jsx_runtime, y as createRootRoute } from "../_libs/@tanstack/react-router+[...].mjs";
-import { c as TriangleAlert } from "../_libs/lucide-react.mjs";
+import { l as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { a as union, i as string, n as number, r as object, t as literal } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-V6yrgCtz.js
-var router_V6yrgCtz_exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
+//#region node_modules/.nitro/vite/services/ssr/assets/router-iGvGHB-_.js
+var router_iGvGHB___exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var FALLBACK_MESSAGE = "An unexpected error occurred. Try reloading the page.";
@@ -331,7 +331,7 @@ function PreviewHostBridge() {
 	}, [router]);
 	return null;
 }
-var styles_default = "/assets/styles-Bd_f8A34.css";
+var styles_default = "/assets/styles-CC4m6_1E.css";
 var APP_NAME = "Bunny RTC";
 var Route$2 = createRootRoute({
 	head: () => ({
@@ -385,9 +385,9 @@ var Route$2 = createRootRoute({
 		] })]
 	})
 });
-var $$splitComponentImporter$1 = () => import("./routes-BI9ZjcyZ.mjs");
+var $$splitComponentImporter$1 = () => import("./routes-D05QULIa.mjs");
 var Route$1 = createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
-var $$splitComponentImporter = () => import("./admin-BQh8LysL.mjs");
+var $$splitComponentImporter = () => import("./admin-M5oHOEoL.mjs");
 var Route = createFileRoute("/admin")({
 	head: () => ({ meta: [{ title: "Admin · Bunny RTC" }, {
 		name: "robots",
@@ -416,4 +416,4 @@ function getRouter() {
 	});
 }
 //#endregion
-export { getRouter, router_V6yrgCtz_exports as t };
+export { getRouter, router_iGvGHB___exports as t };

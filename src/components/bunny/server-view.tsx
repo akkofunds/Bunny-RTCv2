@@ -3,7 +3,7 @@ import { ArrowDown, Copy, CornerUpLeft, Hash, Lock, Paperclip, Pencil, Search, S
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import type { Msg } from "@/lib/bunny/types";
 import { RichText, mentions } from "./rich-text";
-import { AdminTag, Face, Floating, dayLabel, timeLabel } from "./ui";
+import { Face, Floating, RoleBadge, dayLabel, timeLabel } from "./ui";
 import type { MenuTarget } from "./user-menu";
 import { ACCEPT, AttachTray, MediaGrid, useAttachments } from "./media-view";
 import { matchCommands, runCommand } from "./commands";
@@ -70,11 +70,17 @@ export function ServerView({
     });
   }, [bunny, query]);
 
+  // First paint jumps to the bottom; after that new messages glide into view.
+  const mountedAt = useRef(Date.now());
+  const firstScroll = useRef(true);
   useEffect(() => {
     const el = threadRef.current;
     if (!el || !stickRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [visible]);
+    if (firstScroll.current || bunny.settings.reduceMotion) {
+      el.scrollTop = el.scrollHeight;
+      if (visible.length) firstScroll.current = false;
+    } else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [visible, bunny.settings.reduceMotion]);
 
   useEffect(() => {
     if (!picker) return;
@@ -224,14 +230,14 @@ export function ServerView({
             <div key={msg.id}>
               {showDay ? <div className="day">{dayLabel(msg.at)}</div> : null}
               <article
-                className={`msg ${cont ? "cont" : ""} ${mentioned ? "mention" : ""} ${isBanned ? "banned" : ""} ${selected === msg.id ? "selected" : ""}`}
+                className={`msg ${cont ? "cont" : ""} ${mentioned ? "mention" : ""} ${isBanned ? "banned" : ""} ${selected === msg.id ? "selected" : ""} ${msg.at > mountedAt.current - 1500 ? (mine ? "enter mine-enter" : "enter") : ""} ${msg.pending ? "pending" : ""}`}
                 onClick={(e) => {
                   if ((e.target as HTMLElement).closest("button, a, textarea, input")) return;
                   setSelected((cur) => (cur === msg.id ? null : msg.id));
                 }}
               >
                 <button type="button" className="face-btn" onClick={open} aria-label={`Open ${msg.name}`}>
-                  <Face avatar={info.avatar} color={info.color} label={msg.name} />
+                  <Face avatar={info.avatar} anim={info.anim} color={info.color} label={msg.name} />
                 </button>
                 <div style={{ minWidth: 0 }}>
                   {msg.replyTo ? (
@@ -245,7 +251,7 @@ export function ServerView({
                     <button type="button" className="name" style={{ color: `color-mix(in srgb, ${info.color} 45%, white)` }} onClick={open}>
                       {msg.name}
                     </button>
-                    {adminMsg ? <AdminTag /> : null}
+                    <RoleBadge role={adminMsg || !bunny.admins[msg.authorId] ? info.role : null} admin={adminMsg} />
                     {isBanned ? <span className="tag ban">Banned</span> : null}
                     <span className="stamp">{timeLabel(msg.at, h24)}</span>
                   </div>

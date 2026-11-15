@@ -150,3 +150,12 @@ export function cleanMedia(value: unknown): MediaRef[] | undefined {
   }
   return out.length ? out : undefined;
 }
+
+/** Animated avatars are kept exactly as uploaded (GIF, animated WebP, short MP4/WebM). */
+export async function prepareAnimated(file: File): Promise<Prepared> {
+  const ok = ["image/gif", "image/webp", "video/mp4", "video/webm"];
+  if (!ok.includes(file.type)) throw new Error("Use a GIF, WebP, MP4 or WebM");
+  if (file.size > 2 * 1024 * 1024) throw new Error("Animated pictures can be up to 2 MB");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return { bytes, mime: file.type, kind: file.type.startsWith("video/") ? "video" : "image", name: file.name.slice(0, 80), preview: URL.createObjectURL(file) };
+}

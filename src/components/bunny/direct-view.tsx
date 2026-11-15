@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, Inbox, Lock, MessageCircle, MoreHorizontal, Paperclip, Send, Trash2, UserPlus, X } from "lucide-react";
 import type { Bunny } from "@/lib/bunny/use-bunny";
 import { RichText } from "./rich-text";
-import { AdminTag, Face, ago, dayLabel, timeLabel } from "./ui";
+import { Face, RoleBadge, ago, dayLabel, timeLabel } from "./ui";
 import type { MenuTarget } from "./user-menu";
 import { ACCEPT, AttachTray, MediaGrid, useAttachments } from "./media-view";
 
@@ -22,10 +22,16 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
       .sort((a, b) => a.at - b.at);
   }, [bunny.dms, peer, me]);
 
+  const mountedAt = useRef(Date.now());
+  const lastPeer = useRef<string | null>(null);
   useEffect(() => {
     const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [thread.length, peer]);
+    if (!el) return;
+    if (lastPeer.current !== peer || bunny.settings.reduceMotion) {
+      el.scrollTop = el.scrollHeight;
+      lastPeer.current = peer;
+    } else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [thread.length, peer, bunny.settings.reduceMotion]);
 
   useEffect(() => {
     if (peer) inputRef.current?.focus();
@@ -106,7 +112,7 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
                 className={`person ${peer === c.peer ? "active" : ""}`}
                 onClick={() => bunny.setView({ tab: "direct", peer: c.peer })}
               >
-                <Face avatar={p.avatar} color={p.color} label={p.name} status={p.online ? p.status : undefined} />
+                <Face avatar={p.avatar} anim={p.anim} color={p.color} label={p.name} status={p.online ? p.status : undefined} />
                 <span className="meta">
                   <strong>
                     {p.name}
@@ -133,11 +139,11 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
               <button className="gbtn sm icon only-mobile" type="button" aria-label="Back to conversations" onClick={() => bunny.setView({ tab: "direct", peer: null })}>
                 <ArrowLeft size={16} />
               </button>
-              <Face avatar={info.avatar} color={info.color} label={info.name} status={info.online ? info.status : undefined} size="2.2rem" />
+              <Face avatar={info.avatar} anim={info.anim} color={info.color} label={info.name} status={info.online ? info.status : undefined} size="2.2rem" />
               <div className="grow">
                 <h2 style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                   {info.name}
-                  {bunny.admins[peer] ? <AdminTag /> : null}
+                  <RoleBadge role={info.role} admin={!!bunny.admins[peer]} />
                 </h2>
                 <p>{info.online ? (info.status === "dnd" ? "Do not disturb" : info.status === "idle" ? "Idle" : "Online") : "Offline · they'll get it next time"}</p>
               </div>
@@ -170,7 +176,7 @@ export function DirectView({ bunny, openMenu }: { bunny: Bunny; openMenu: (t: Me
                 return (
                   <div key={d.id} style={{ display: "contents" }}>
                     {newDay ? <div className="day">{dayLabel(d.at)}</div> : gap ? <div className="bubble-gap" /> : null}
-                    <div className={`bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""}`}>
+                    <div className={`bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""} ${d.at > mountedAt.current - 1500 ? "enter" : ""}`}>
                       {d.media ? <MediaGrid media={d.media} load={bunny.loadMedia} /> : null}
                       {d.text ? <RichText text={d.text} selfName={bunny.profile.name} /> : null}
                       <time>{timeLabel(d.at, bunny.settings.clock24)}</time>

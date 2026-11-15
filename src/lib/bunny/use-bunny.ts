@@ -45,6 +45,9 @@ import {
   type RoomRec,
   type FlashRec,
   type KickRec,
+  type PerkRec,
+  type RoleTag,
+  cleanRole,
 } from "./types";
 import { cleanMedia, packMedia, unpackMedia, type MediaRef, type Prepared } from "./media";
 
@@ -119,6 +122,8 @@ export function useBunny(mode: "user" | "admin") {
   const [serverUnread, setServerUnread] = useState(0);
   const [toast, setToast] = useState("");
   const [room, setRoom] = useState<RoomRec | null>(null);
+  const [perks, setPerks] = useState<Record<string, PerkRec>>({});
+  const [pending, setPending] = useState<Record<string, Msg>>({});
   const [flash, setFlash] = useState<FlashRec | null>(null);
   const [kicked, setKicked] = useState<KickRec | null>(null);
   const [modHistory, setModHistory] = useState<{ key: string; text: string; at: number; byName: string }[]>([]);
@@ -190,7 +195,8 @@ export function useBunny(mode: "user" | "admin") {
       const k = (s: string) => `bunny_${s}_${me.id}`;
       idRef.current = me;
       setIdentity(me);
-      setProfile({ name, avatar, bio, color });
+      const anim = cleanMedia([ls.get<unknown>("bunny_anim", null)].filter(Boolean))?.[0];
+      setProfile({ name, avatar, bio, color, anim });
       setSettings(nextSettings);
       setSession(verifiedSession);
       setFriends(ls.get(k("friends"), {}));
@@ -318,6 +324,7 @@ export function useBunny(mode: "user" | "admin") {
         name: p.name,
         color: p.color,
         avatar: p.avatar,
+        anim: p.anim,
         bio: p.bio || undefined,
         status: settingsRef.current.status,
         box: { x: me.box.x, y: me.box.y },
@@ -397,6 +404,7 @@ export function useBunny(mode: "user" | "admin") {
       };
       if (!msg.text.trim() && !msg.media) return;
       const prev = msgMap.get(msg.id);
+      if (msg.authorId === me.id) setPending((cur) => (cur[msg.id] ? Object.fromEntries(Object.entries(cur).filter(([k]) => k !== msg.id)) : cur));
       if (escrowReady && prev && msg.editedAt && prev.text !== msg.text) {
         addLog({
           key: `edit:${msg.id}:${msg.editedAt}`,
@@ -435,6 +443,7 @@ export function useBunny(mode: "user" | "admin") {
           bio: typeof raw.bio === "string" ? raw.bio.slice(0, 80) : undefined,
           status: STATUSES.has(raw.status as string) ? raw.status : "online",
           box: isPoint(raw.box) ? raw.box : undefined,
+          anim: cleanMedia(raw.anim ? [raw.anim] : undefined)?.[0],
           ts: Number(raw.ts) || undefined,
           sig: typeof raw.sig === "string" ? raw.sig.slice(0, 200) : undefined,
           at: Date.now(),
@@ -592,6 +601,15 @@ export function useBunny(mode: "user" | "admin") {
         const hkey = `${rec.kind}:${rec.at}:${rec.by}`;
         setModHistory((prev) => (prev.some((h) => h.key === hkey) ? prev : [{ key: hkey, text: line, at: rec.at, byName: rec.byName }, ...prev].slice(0, 80)));
       }
+      if ((rec as unknown as PerkRec).kind === "perk") {
+        const perk = rec as unknown as PerkRec;
+        if (key !== `perk-${perk.target}`) return;
+        const clean: PerkRec = { ...perk, animated: !!perk.animated, role: cleanRole(perk.role) };
+        setPerks((prev) => (prev[perk.target] && prev[perk.target].at >= perk.at ? prev : { ...prev, [perk.target]: clean }));
+        know(perk.target, perk.targetName);
+        guardRemember(topic, payload);
+        return;
+      }
       if (rec.kind === "flash" && key === "flash") {
         if (Date.now() - rec.at < 20000 && typeof rec.text === "string") setFlash({ ...rec, text: rec.text.slice(0, 200) });
         return;
@@ -616,7 +634,12 @@ export function useBunny(mode: "user" | "admin") {
       } else if (rec.kind === "wallpaper" && key === "wallpaper") {
         if (rec.mode === "image" && !safeWallpaperUrl(rec.value)) return;
         if (rec.mode === "preset" && !(typeof rec.value === "string" && PRESETS[rec.value])) return;
-        if (!["default", "preset", "image"].includes(rec.mode)) return;
+        if (!["default", "preset", "image", "media"].includes(rec.mode)) return;
+        if (rec.mode === "media") {
+          const media = cleanMedia(rec.media ? [rec.media] : undefined)?.[0];
+          if (!media || media.k) return;
+          rec.media = media;
+        }
         setWallpaper((prev) => (prev && prev.at >= rec.at ? prev : rec));
       } else if (rec.kind === "announce" && key === "announce") {
         setAnnounce((prev) => (prev && prev.at >= rec.at ? prev : rec));
@@ -739,6 +762,7 @@ export function useBunny(mode: "user" | "admin") {
         name: profile.name,
         color: profile.color,
         avatar: profile.avatar,
+        anim: profile.anim,
         bio: profile.bio || undefined,
         status: settings.status,
         box: { x: me.box.x, y: me.box.y },
@@ -818,9 +842,11 @@ export function useBunny(mode: "user" | "admin") {
         status: p ? p.status || "online" : undefined,
         online: !!p,
         box: p?.box || f?.box,
+        anim: p?.anim && (admins[id] || perks[id]?.animated) ? p.anim : undefined,
+        role: perks[id]?.role || null,
       };
     },
-    [people, friends, contacts, directory],
+    [people, friends, contacts, directory, admins, perks],
   );
 
   const publish = (topic: string, payload: string, retained: boolean) => socketRef.current?.publish(topic, payload, retained);
@@ -861,6 +887,16 @@ export function useBunny(mode: "user" | "admin") {
       };
       if (sessionRef.current) msg.sig = await signText(me.sign, msgSigText(msg));
       const body = JSON.stringify(msg);
+      setPending((cur) => ({ ...cur, [msg.id]: msg }));
+      window.setTimeout(() => {
+        setPending((cur) => {
+          if (!cur[msg.id]) return cur;
+          setToast("A message didn't send. Check your connection");
+          const next = { ...cur };
+          delete next[msg.id];
+          return next;
+        });
+      }, 15000);
       publish(T.HISTORY + msg.id, body, true);
       publish(T.CHAT, body, false);
       return true;
@@ -938,7 +974,9 @@ export function useBunny(mode: "user" | "admin") {
   const saveProfile = useCallback((next: Profile) => {
     const name = cleanName(next.name);
     if (name.length < 2) return false;
-    const p: Profile = { name, avatar: next.avatar, bio: next.bio.slice(0, 80), color: safeColor(next.color, idRef.current?.id || "x") };
+    const p: Profile = { name, avatar: next.avatar, anim: next.anim, bio: next.bio.slice(0, 80), color: safeColor(next.color, idRef.current?.id || "x") };
+    if (p.anim) ls.set("bunny_anim", p.anim);
+    else localStorage.removeItem("bunny_anim");
     localStorage.setItem("bunny_name", p.name);
     if (p.avatar) localStorage.setItem("bunny_avatar", p.avatar);
     else localStorage.removeItem("bunny_avatar");
@@ -1240,14 +1278,14 @@ export function useBunny(mode: "user" | "admin") {
   );
 
   const setGlobalWallpaper = useCallback(
-    async (modeName: WallpaperRec["mode"], value?: string) => {
+    async (modeName: WallpaperRec["mode"], value?: string, media?: MediaRef) => {
       const me = idRef.current;
       if (!me) return;
       if (modeName === "image" && !safeWallpaperUrl(value)) {
         setToast("That image link won't work. Use an https:// image");
         return;
       }
-      const rec: WallpaperRec = { kind: "wallpaper", mode: modeName, value, at: Date.now(), by: me.id, byName: profileRef.current.name };
+      const rec: WallpaperRec = { kind: "wallpaper", mode: modeName, value, media, at: Date.now(), by: me.id, byName: profileRef.current.name };
       if (await modPublish(T.MOD + "wallpaper", rec)) setToast(modeName === "default" ? "Wallpaper reset for everyone" : "Wallpaper updated for everyone");
     },
     [modPublish],
@@ -1262,6 +1300,26 @@ export function useBunny(mode: "user" | "admin") {
     },
     [modPublish],
   );
+
+  const setPerk = useCallback(
+    async (target: string, targetName: string, animated: boolean, role: RoleTag | null) => {
+      const me = idRef.current;
+      if (!me) return;
+      const rec: PerkRec = { kind: "perk", target, targetName, animated, role: cleanRole(role), at: Date.now(), by: me.id, byName: profileRef.current.name };
+      if (await modPublish(T.MOD + "perk-" + target, rec)) setToast(target === me.id ? "Your tag was updated" : `Updated perks for ${targetName}`);
+    },
+    [modPublish],
+  );
+
+  /** Admins always get animated avatars; others need a perk from an admin. */
+  const canAnimate = useCallback((id: string) => !!admins[id] || !!perks[id]?.animated, [admins, perks]);
+  const roleOf = useCallback((id: string) => perks[id]?.role || null, [perks]);
+
+  const allMessages = useMemo(() => {
+    const extra = Object.values(pending).filter((m) => !messages.some((x) => x.id === m.id));
+    if (!extra.length) return messages;
+    return [...messages, ...extra.map((m) => ({ ...m, pending: true }))].sort((a, b) => a.at - b.at);
+  }, [messages, pending]);
 
   /* ---------- derived ---------- */
   const conversations = useMemo(() => {
@@ -1293,7 +1351,7 @@ export function useBunny(mode: "user" | "admin") {
     session,
     online,
     status,
-    messages,
+    messages: allMessages,
     people,
     admins,
     bans,
@@ -1344,6 +1402,10 @@ export function useBunny(mode: "user" | "admin") {
     setGlobalWallpaper,
     setAnnouncement,
     room,
+    perks,
+    setPerk,
+    canAnimate,
+    roleOf,
     flash,
     clearFlash: () => setFlash(null),
     kicked,

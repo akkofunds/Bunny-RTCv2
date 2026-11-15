@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AtSign, Ban, Hash, LogOut, Megaphone, Search, Settings as SettingsIcon, ShieldCheck, TriangleAlert, Users, X } from "lucide-react";
 import { useBunny } from "@/lib/bunny/use-bunny";
-import { ACCENTS, PRESETS, safeWallpaperUrl } from "@/lib/bunny/types";
-import { AdminTag, Face, StarMark } from "./ui";
+import { ACCENTS, PRESETS, inkFor, safeWallpaperUrl } from "@/lib/bunny/types";
+import { Face, MediaLoader, RoleBadge, StarMark } from "./ui";
 import { ServerView } from "./server-view";
 import { DirectView } from "./direct-view";
 import { ModView } from "./mod-view";
@@ -71,11 +71,55 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [bunny]);
 
-  const accent = ACCENTS[s.accent] || ACCENTS.teal;
+  const accent = /^#[0-9a-fA-F]{6}$/.test(s.accent) ? { color: s.accent, ink: inkFor(s.accent) } : ACCENTS[s.accent] || ACCENTS.teal;
   const wp = bunny.wallpaper;
+  const [myWall, setMyWall] = useState<string | null>(null);
+  useEffect(() => {
+    const read = () => {
+      try {
+        setMyWall(localStorage.getItem("bunny_mywall"));
+      } catch {
+        setMyWall(null);
+      }
+    };
+    read();
+    window.addEventListener("bunny-mywall", read);
+    return () => window.removeEventListener("bunny-mywall", read);
+  }, []);
+  const [wallMedia, setWallMedia] = useState<{ url: string; kind: string } | null>(null);
+  const wallRef = wp?.mode === "media" ? wp.media : undefined;
+  useEffect(() => {
+    setWallMedia(null);
+    if (!wallRef) return;
+    let alive = true;
+    bunny.loadMedia(wallRef).then(
+      (url) => alive && setWallMedia({ url, kind: wallRef.kind }),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [wallRef, bunny.loadMedia]); // eslint-disable-line react-hooks/exhaustive-deps
   let wallStyle: React.CSSProperties | undefined;
-  if (wp?.mode === "preset" && wp.value && PRESETS[wp.value]) wallStyle = { background: PRESETS[wp.value].css };
+  if (myWall && safeWallpaperUrl(myWall)) wallStyle = { backgroundImage: `url("${myWall}")` };
+  else if (wp?.mode === "preset" && wp.value && PRESETS[wp.value]) wallStyle = { background: PRESETS[wp.value].css };
   else if (wp?.mode === "image" && safeWallpaperUrl(wp.value)) wallStyle = { backgroundImage: `url("${wp.value}")` };
+  else if (wp?.mode === "media" && wallMedia?.kind === "image") wallStyle = { backgroundImage: `url("${wallMedia.url}")` };
+  const wallVideo = !myWall && wp?.mode === "media" && wallMedia?.kind === "video" ? wallMedia.url : null;
+  const wallKey = myWall ? "mine" : wp ? `${wp.mode}:${wp.at}:${wallMedia ? 1 : 0}` : "default";
+
+  // Sliding highlight behind the active dock tab.
+  const dockRef = useRef<HTMLElement>(null);
+  const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = dockRef.current?.querySelector<HTMLElement>(".seg.active");
+      setPill(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [bunny.view.tab, bunny.adminMode, bunny.session]);
 
   const people = bunny.people.filter((p) => !bunny.blocked.includes(p.id) && (bunny.adminMode || !bunny.isBanned(p.id)));
   const tab = bunny.view.tab;
@@ -100,7 +144,10 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
       style={{ "--accent": accent.color, "--accent-ink": accent.ink, "--dim": String(s.dim / 100), "--color-accent": accent.color } as React.CSSProperties}
     >
       <LensFilter />
-      <div className="wallpaper" style={wallStyle} />
+      <MediaLoader.Provider value={bunny.loadMedia}>
+      <div className="wallpaper" key={wallKey} style={wallStyle}>
+        {wallVideo ? <video className="wallpaper-video" src={wallVideo} autoPlay muted loop playsInline /> : null}
+      </div>
       <div className="shell">
         <header className="topbar">
           <div className="brand lg">
@@ -116,7 +163,8 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
             </div>
           </div>
 
-          <nav className="dockbar lg lg-lens" aria-label="Sections">
+          <nav className="dockbar lg lg-lens" aria-label="Sections" ref={dockRef}>
+            {pill ? <span className="seg-pill" style={{ transform: `translateX(${pill.left}px)`, width: pill.width }} aria-hidden /> : null}
             <button type="button" className={`seg ${tab === "server" ? "active" : ""}`} aria-current={tab === "server"} onClick={() => bunny.setView({ tab: "server", peer: null })}>
               <Hash size={16} />
               <span className="seg-label">Server</span>
@@ -150,7 +198,7 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
               <SettingsIcon size={18} />
             </button>
             <button className="gbtn icon" type="button" aria-label="Your profile" onClick={(e) => setMenu({ id: me, x: e.clientX - 240, y: e.clientY + 16 })} style={{ padding: 0 }}>
-              <Face avatar={bunny.profile.avatar} color={bunny.profile.color} label={bunny.profile.name || "You"} status={s.status} size="2.1rem" />
+              <Face avatar={bunny.profile.avatar} anim={bunny.canAnimate(me) ? bunny.profile.anim : undefined} color={bunny.profile.color} label={bunny.profile.name || "You"} status={s.status} size="2.1rem" />
             </button>
           </div>
         </header>
@@ -163,7 +211,7 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
           </div>
         ) : null}
 
-        <main className="body">
+        <main className="body view-enter" key={tab}>
           {tab === "server" ? (
             <>
               <ServerView bunny={bunny} showSearch={showSearch} openMenu={setMenu} composerRef={composerRef} />
@@ -176,24 +224,25 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
                     </button>
                   </div>
                   <div className="people">
-                    {people.map((p) => {
+                    {people.map((p, idx) => {
                       const admin = bunny.isAdminPerson(p.id);
                       return (
                         <button
                           type="button"
                           className="person"
                           key={p.id}
+                          style={{ "--i": Math.min(idx, 12) } as React.CSSProperties}
                           onClick={(e) => setMenu({ id: p.id, x: e.clientX - 20, y: e.clientY + 8 })}
                           onContextMenu={(e) => {
                             e.preventDefault();
                             setMenu({ id: p.id, x: e.clientX, y: e.clientY });
                           }}
                         >
-                          <Face avatar={p.avatar} color={p.color} label={p.name} status={p.status || "online"} />
+                          <Face avatar={p.avatar} anim={bunny.lookup(p.id).anim} color={p.color} label={p.name} status={p.status || "online"} />
                           <span className="meta">
-                            <strong style={{ color: admin ? "#ffe08a" : undefined }}>
+                            <strong>
                               {p.name}
-                              {admin ? <AdminTag /> : null}
+                              <RoleBadge role={admin || !bunny.admins[p.id] ? bunny.roleOf(p.id) : null} admin={admin} />
                             </strong>
                             <span>{p.id === me ? "You" : p.bio || (bunny.friends[p.id] ? "Friend" : p.status === "dnd" ? "Do not disturb" : p.status === "idle" ? "Idle" : "Online")}</span>
                           </span>
@@ -293,6 +342,7 @@ export function Room({ mode = "user" }: { mode?: "user" | "admin" }) {
           </div>
         </div>
       ) : null}
+      </MediaLoader.Provider>
     </div>
   );
 }

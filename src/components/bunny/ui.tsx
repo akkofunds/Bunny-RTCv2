@@ -1,4 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { MediaRef } from "@/lib/bunny/media";
+import { inkFor, type RoleTag } from "@/lib/bunny/types";
 import { createPortal } from "react-dom";
 import type { Status } from "@/lib/bunny/types";
 
@@ -11,28 +13,71 @@ export function StarMark({ className }: { className?: string }) {
   );
 }
 
+/** Lets avatars fetch animated pictures without threading the loader everywhere. */
+export const MediaLoader = createContext<((ref: MediaRef) => Promise<string>) | null>(null);
+
+function useMediaUrl(ref?: MediaRef) {
+  const load = useContext(MediaLoader);
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setUrl(null);
+    if (!ref || !load) return;
+    let alive = true;
+    load(ref).then(
+      (u) => alive && setUrl(u),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [ref?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  return url;
+}
+
 export function Face({
   avatar,
+  anim,
   color,
   label,
   status,
   size,
 }: {
   avatar?: string;
+  anim?: MediaRef;
   color: string;
   label: string;
   status?: Status;
   size?: string;
 }) {
+  const animUrl = useMediaUrl(anim);
   return (
     <span
-      className="avatar"
+      className={`avatar ${animUrl ? "animated" : ""}`}
       style={{ background: `radial-gradient(circle at 32% 25%, color-mix(in srgb, ${color} 70%, white), ${color} 70%)`, ...(size ? { width: size, height: size } : {}) }}
       role="img"
       aria-label={label}
     >
-      {avatar ? <img src={avatar} alt="" /> : <StarMark />}
+      {animUrl && anim?.kind === "video" ? (
+        <video src={animUrl} autoPlay muted loop playsInline />
+      ) : animUrl ? (
+        <img src={animUrl} alt="" />
+      ) : avatar ? (
+        <img src={avatar} alt="" />
+      ) : (
+        <StarMark />
+      )}
       {status ? <i className={`dot ${status}`} aria-hidden /> : null}
+    </span>
+  );
+}
+
+/** Admin tag (default gold) or a custom role tag chosen by an admin. */
+export function RoleBadge({ role, admin }: { role: RoleTag | null; admin: boolean }) {
+  if (!role && !admin) return null;
+  if (!role) return <AdminTag />;
+  return (
+    <span className={`tag custom ${admin ? "admin" : ""}`} style={{ background: role.color, color: inkFor(role.color) }} title={admin ? "Verified admin" : "Role"}>
+      {role.text}
     </span>
   );
 }

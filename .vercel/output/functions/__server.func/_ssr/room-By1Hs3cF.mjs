@@ -1,7 +1,7 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { J as require_react, n as require_react_dom, x as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
-import { $ as ArrowLeft, A as LogIn, B as Eye, D as MessageCircle, E as MessagesSquare, F as KeyRound, G as CornerUpLeft, H as Eraser, I as Inbox, J as Check, K as Copy, L as Image$1, N as LoaderCircle, O as Megaphone, P as LayoutGrid, R as ImageOff, S as Pencil, T as Palette, U as Ellipsis, V as EyeOff, W as Download, X as Ban, Y as Bell, Z as AtSign, _ as Settings, a as UserX, b as ScrollText, c as TriangleAlert, d as Terminal, et as ArrowDown, f as Smile, g as ShieldAlert, h as ShieldCheck, i as User, j as Lock, k as LogOut, l as Trash2, m as Shield, n as X, o as UserPlus, p as SmilePlus, q as Clock, r as Users, s as UserMinus, t as Zap, u as Timer, v as Send, w as Paperclip, x as RotateCcw, y as Search, z as Hash } from "../_libs/lucide-react.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/room-DeD3FrU9.js
+import { $ as Ban, A as Megaphone, B as ImageOff, C as RotateCcw, D as Palette, E as Paperclip, F as LoaderCircle, G as Ellipsis, H as Eye, I as LayoutGrid, J as Copy, K as Download, L as KeyRound, M as LogIn, N as Lock, O as MessagesSquare, Q as Bell, R as Inbox, S as ScrollText, U as EyeOff, V as Hash, W as Eraser, X as Clock, Y as CloudUpload, Z as Check, _ as ShieldCheck, a as UserX, b as Send, c as Upload, d as Timer, et as AtSign, f as Terminal, g as Shield, h as SmilePlus, i as User, j as LogOut, k as MessageCircle, l as TriangleAlert, m as Smile, n as X, nt as ArrowLeft, o as UserPlus, p as Sparkles, q as CornerUpLeft, r as Users, rt as ArrowDown, s as UserMinus, t as Zap, u as Trash2, v as ShieldAlert, w as Pencil, x as Search, y as Settings, z as Image$1 } from "../_libs/lucide-react.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/room-By1Hs3cF.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var import_react_dom = require_react_dom();
@@ -433,6 +433,30 @@ function safeWallpaperUrl(value) {
 	if (/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) return value;
 	if (/^https:\/\/[^\s"'()\\<>]+$/.test(value) && value.length < 2e3) return value;
 	return null;
+}
+/** Readable text color (dark or white) for any background hex. */
+function inkFor(hex) {
+	const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+	if (!m) return "#05231d";
+	const [r, g, b] = [
+		m[1],
+		m[2],
+		m[3]
+	].map((h) => {
+		const c = parseInt(h, 16) / 255;
+		return c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+	});
+	return .2126 * r + .7152 * g + .0722 * b > .4 ? "#0b1014" : "#ffffff";
+}
+function cleanRole(value) {
+	const r = value;
+	if (!r || typeof r.text !== "string" || typeof r.color !== "string") return null;
+	const text = r.text.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 18);
+	if (!text || !/^#[0-9a-fA-F]{6}$/.test(r.color)) return null;
+	return {
+		text,
+		color: r.color
+	};
 }
 function threadKey(a, b) {
 	return a < b ? `${a}:${b}` : `${b}:${a}`;
@@ -868,6 +892,23 @@ function cleanMedia(value) {
 	}
 	return out.length ? out : void 0;
 }
+/** Animated avatars are kept exactly as uploaded (GIF, animated WebP, short MP4/WebM). */
+async function prepareAnimated(file) {
+	if (![
+		"image/gif",
+		"image/webp",
+		"video/mp4",
+		"video/webm"
+	].includes(file.type)) throw new Error("Use a GIF, WebP, MP4 or WebM");
+	if (file.size > 2097152) throw new Error("Animated pictures can be up to 2 MB");
+	return {
+		bytes: new Uint8Array(await file.arrayBuffer()),
+		mime: file.type,
+		kind: file.type.startsWith("video/") ? "video" : "image",
+		name: file.name.slice(0, 80),
+		preview: URL.createObjectURL(file)
+	};
+}
 var ID_RE = /^[a-z0-9]{4,40}$/;
 var USER_RE = /^[a-z0-9]{8,40}$/;
 var STATUSES = /* @__PURE__ */ new Set([
@@ -939,6 +980,8 @@ function useBunny(mode) {
 	const [serverUnread, setServerUnread] = (0, import_react.useState)(0);
 	const [toast, setToast] = (0, import_react.useState)("");
 	const [room, setRoom] = (0, import_react.useState)(null);
+	const [perks, setPerks] = (0, import_react.useState)({});
+	const [pending, setPending] = (0, import_react.useState)({});
 	const [flash, setFlash] = (0, import_react.useState)(null);
 	const [kicked, setKicked] = (0, import_react.useState)(null);
 	const [modHistory, setModHistory] = (0, import_react.useState)([]);
@@ -1005,11 +1048,13 @@ function useBunny(mode) {
 			const k = (s) => `bunny_${s}_${me.id}`;
 			idRef.current = me;
 			setIdentity(me);
+			const anim = cleanMedia([ls.get("bunny_anim", null)].filter(Boolean))?.[0];
 			setProfile({
 				name,
 				avatar,
 				bio,
-				color
+				color,
+				anim
 			});
 			setSettings(nextSettings);
 			setSession(verifiedSession);
@@ -1126,6 +1171,7 @@ function useBunny(mode) {
 				name: p.name,
 				color: p.color,
 				avatar: p.avatar,
+				anim: p.anim,
 				bio: p.bio || void 0,
 				status: settingsRef.current.status,
 				box: {
@@ -1229,6 +1275,7 @@ function useBunny(mode) {
 			};
 			if (!msg.text.trim() && !msg.media) return;
 			const prev = msgMap.get(msg.id);
+			if (msg.authorId === me.id) setPending((cur) => cur[msg.id] ? Object.fromEntries(Object.entries(cur).filter(([k]) => k !== msg.id)) : cur);
 			if (escrowReady && prev && msg.editedAt && prev.text !== msg.text) addLog({
 				key: `edit:${msg.id}:${msg.editedAt}`,
 				kind: "edit",
@@ -1263,6 +1310,7 @@ function useBunny(mode) {
 					bio: typeof raw.bio === "string" ? raw.bio.slice(0, 80) : void 0,
 					status: STATUSES.has(raw.status) ? raw.status : "online",
 					box: isPoint(raw.box) ? raw.box : void 0,
+					anim: cleanMedia(raw.anim ? [raw.anim] : void 0)?.[0],
 					ts: Number(raw.ts) || void 0,
 					sig: typeof raw.sig === "string" ? raw.sig.slice(0, 200) : void 0,
 					at: Date.now()
@@ -1477,6 +1525,22 @@ function useBunny(mode) {
 					byName: rec.byName
 				}, ...prev].slice(0, 80));
 			}
+			if (rec.kind === "perk") {
+				const perk = rec;
+				if (key !== `perk-${perk.target}`) return;
+				const clean = {
+					...perk,
+					animated: !!perk.animated,
+					role: cleanRole(perk.role)
+				};
+				setPerks((prev) => prev[perk.target] && prev[perk.target].at >= perk.at ? prev : {
+					...prev,
+					[perk.target]: clean
+				});
+				know(perk.target, perk.targetName);
+				guardRemember(topic, payload);
+				return;
+			}
 			if (rec.kind === "flash" && key === "flash") {
 				if (Date.now() - rec.at < 2e4 && typeof rec.text === "string") setFlash({
 					...rec,
@@ -1514,8 +1578,14 @@ function useBunny(mode) {
 				if (![
 					"default",
 					"preset",
-					"image"
+					"image",
+					"media"
 				].includes(rec.mode)) return;
+				if (rec.mode === "media") {
+					const media = cleanMedia(rec.media ? [rec.media] : void 0)?.[0];
+					if (!media || media.k) return;
+					rec.media = media;
+				}
 				setWallpaper((prev) => prev && prev.at >= rec.at ? prev : rec);
 			} else if (rec.kind === "announce" && key === "announce") setAnnounce((prev) => prev && prev.at >= rec.at ? prev : rec);
 			else return;
@@ -1637,6 +1707,7 @@ function useBunny(mode) {
 				name: profile.name,
 				color: profile.color,
 				avatar: profile.avatar,
+				anim: profile.anim,
 				bio: profile.bio || void 0,
 				status: settings.status,
 				box: {
@@ -1724,13 +1795,17 @@ function useBunny(mode) {
 			bio: p?.bio,
 			status: p ? p.status || "online" : void 0,
 			online: !!p,
-			box: p?.box || f?.box
+			box: p?.box || f?.box,
+			anim: p?.anim && (admins[id] || perks[id]?.animated) ? p.anim : void 0,
+			role: perks[id]?.role || null
 		};
 	}, [
 		people,
 		friends,
 		contacts,
-		directory
+		directory,
+		admins,
+		perks
 	]);
 	const publish = (topic, payload, retained) => socketRef.current?.publish(topic, payload, retained);
 	const sealLog = async (entry) => {
@@ -1770,6 +1845,19 @@ function useBunny(mode) {
 		};
 		if (sessionRef.current) msg.sig = await signText(me.sign, msgSigText(msg));
 		const body = JSON.stringify(msg);
+		setPending((cur) => ({
+			...cur,
+			[msg.id]: msg
+		}));
+		window.setTimeout(() => {
+			setPending((cur) => {
+				if (!cur[msg.id]) return cur;
+				setToast("A message didn't send. Check your connection");
+				const next = { ...cur };
+				delete next[msg.id];
+				return next;
+			});
+		}, 15e3);
 		publish(T.HISTORY + msg.id, body, true);
 		publish(T.CHAT, body, false);
 		return true;
@@ -1854,9 +1942,12 @@ function useBunny(mode) {
 		const p = {
 			name,
 			avatar: next.avatar,
+			anim: next.anim,
 			bio: next.bio.slice(0, 80),
 			color: safeColor(next.color, idRef.current?.id || "x")
 		};
+		if (p.anim) ls.set("bunny_anim", p.anim);
+		else localStorage.removeItem("bunny_anim");
 		localStorage.setItem("bunny_name", p.name);
 		if (p.avatar) localStorage.setItem("bunny_avatar", p.avatar);
 		else localStorage.removeItem("bunny_avatar");
@@ -2226,7 +2317,7 @@ function useBunny(mode) {
 		};
 		if (await modPublish(T.INBOX + target + "/warn-" + id, rec)) setToast(`Warning sent to ${targetName}`);
 	}, [modPublish]);
-	const setGlobalWallpaper = (0, import_react.useCallback)(async (modeName, value) => {
+	const setGlobalWallpaper = (0, import_react.useCallback)(async (modeName, value, media) => {
 		const me = idRef.current;
 		if (!me) return;
 		if (modeName === "image" && !safeWallpaperUrl(value)) {
@@ -2237,6 +2328,7 @@ function useBunny(mode) {
 			kind: "wallpaper",
 			mode: modeName,
 			value,
+			media,
 			at: Date.now(),
 			by: me.id,
 			byName: profileRef.current.name
@@ -2255,6 +2347,32 @@ function useBunny(mode) {
 		};
 		if (await modPublish(T.MOD + "announce", rec)) setToast(rec.text ? "Announcement posted" : "Announcement cleared");
 	}, [modPublish]);
+	const setPerk = (0, import_react.useCallback)(async (target, targetName, animated, role) => {
+		const me = idRef.current;
+		if (!me) return;
+		const rec = {
+			kind: "perk",
+			target,
+			targetName,
+			animated,
+			role: cleanRole(role),
+			at: Date.now(),
+			by: me.id,
+			byName: profileRef.current.name
+		};
+		if (await modPublish(T.MOD + "perk-" + target, rec)) setToast(target === me.id ? "Your tag was updated" : `Updated perks for ${targetName}`);
+	}, [modPublish]);
+	/** Admins always get animated avatars; others need a perk from an admin. */
+	const canAnimate = (0, import_react.useCallback)((id) => !!admins[id] || !!perks[id]?.animated, [admins, perks]);
+	const roleOf = (0, import_react.useCallback)((id) => perks[id]?.role || null, [perks]);
+	const allMessages = (0, import_react.useMemo)(() => {
+		const extra = Object.values(pending).filter((m) => !messages.some((x) => x.id === m.id));
+		if (!extra.length) return messages;
+		return [...messages, ...extra.map((m) => ({
+			...m,
+			pending: true
+		}))].sort((a, b) => a.at - b.at);
+	}, [messages, pending]);
 	const conversations = (0, import_react.useMemo)(() => {
 		if (!identity) return [];
 		const map = /* @__PURE__ */ new Map();
@@ -2294,7 +2412,7 @@ function useBunny(mode) {
 		session,
 		online,
 		status,
-		messages,
+		messages: allMessages,
 		people,
 		admins,
 		bans,
@@ -2345,6 +2463,10 @@ function useBunny(mode) {
 		setGlobalWallpaper,
 		setAnnouncement,
 		room,
+		perks,
+		setPerk,
+		canAnimate,
+		roleOf,
 		flash,
 		clearFlash: () => setFlash(null),
 		kicked,
@@ -2370,9 +2492,26 @@ function StarMark({ className }) {
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M12 2.8l2.75 5.6 6.15.9-4.45 4.33 1.05 6.12L12 16.86 6.5 19.75l1.05-6.12L3.1 9.3l6.15-.9z" })
 	});
 }
-function Face({ avatar, color, label, status, size }) {
+/** Lets avatars fetch animated pictures without threading the loader everywhere. */
+var MediaLoader = (0, import_react.createContext)(null);
+function useMediaUrl(ref) {
+	const load = (0, import_react.useContext)(MediaLoader);
+	const [url, setUrl] = (0, import_react.useState)(null);
+	(0, import_react.useEffect)(() => {
+		setUrl(null);
+		if (!ref || !load) return;
+		let alive = true;
+		load(ref).then((u) => alive && setUrl(u), () => void 0);
+		return () => {
+			alive = false;
+		};
+	}, [ref?.id, load]);
+	return url;
+}
+function Face({ avatar, anim, color, label, status, size }) {
+	const animUrl = useMediaUrl(anim);
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-		className: "avatar",
+		className: `avatar ${animUrl ? "animated" : ""}`,
 		style: {
 			background: `radial-gradient(circle at 32% 25%, color-mix(in srgb, ${color} 70%, white), ${color} 70%)`,
 			...size ? {
@@ -2382,13 +2521,36 @@ function Face({ avatar, color, label, status, size }) {
 		},
 		role: "img",
 		"aria-label": label,
-		children: [avatar ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+		children: [animUrl && anim?.kind === "video" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", {
+			src: animUrl,
+			autoPlay: true,
+			muted: true,
+			loop: true,
+			playsInline: true
+		}) : animUrl ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+			src: animUrl,
+			alt: ""
+		}) : avatar ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
 			src: avatar,
 			alt: ""
 		}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StarMark, {}), status ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {
 			className: `dot ${status}`,
 			"aria-hidden": true
 		}) : null]
+	});
+}
+/** Admin tag (default gold) or a custom role tag chosen by an admin. */
+function RoleBadge({ role, admin }) {
+	if (!role && !admin) return null;
+	if (!role) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {});
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+		className: `tag custom ${admin ? "admin" : ""}`,
+		style: {
+			background: role.color,
+			color: inkFor(role.color)
+		},
+		title: admin ? "Verified admin" : "Role",
+		children: role.text
 	});
 }
 function AdminTag() {
@@ -3077,11 +3239,19 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 			return true;
 		});
 	}, [bunny, query]);
+	const mountedAt = (0, import_react.useRef)(Date.now());
+	const firstScroll = (0, import_react.useRef)(true);
 	(0, import_react.useEffect)(() => {
 		const el = threadRef.current;
 		if (!el || !stickRef.current) return;
-		el.scrollTop = el.scrollHeight;
-	}, [visible]);
+		if (firstScroll.current || bunny.settings.reduceMotion) {
+			el.scrollTop = el.scrollHeight;
+			if (visible.length) firstScroll.current = false;
+		} else el.scrollTo({
+			top: el.scrollHeight,
+			behavior: "smooth"
+		});
+	}, [visible, bunny.settings.reduceMotion]);
 	(0, import_react.useEffect)(() => {
 		if (!picker) return;
 		const onDown = (event) => {
@@ -3240,7 +3410,7 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 							className: "day",
 							children: dayLabel(msg.at)
 						}) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", {
-							className: `msg ${cont ? "cont" : ""} ${mentioned ? "mention" : ""} ${isBanned ? "banned" : ""} ${selected === msg.id ? "selected" : ""}`,
+							className: `msg ${cont ? "cont" : ""} ${mentioned ? "mention" : ""} ${isBanned ? "banned" : ""} ${selected === msg.id ? "selected" : ""} ${msg.at > mountedAt.current - 1500 ? mine ? "enter mine-enter" : "enter" : ""} ${msg.pending ? "pending" : ""}`,
 							onClick: (e) => {
 								if (e.target.closest("button, a, textarea, input")) return;
 								setSelected((cur) => cur === msg.id ? null : msg.id);
@@ -3253,6 +3423,7 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 									"aria-label": `Open ${msg.name}`,
 									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
 										avatar: info.avatar,
+										anim: info.anim,
 										color: info.color,
 										label: msg.name
 									})
@@ -3278,7 +3449,10 @@ function ServerView({ bunny, showSearch, openMenu, composerRef }) {
 													onClick: open,
 													children: msg.name
 												}),
-												adminMsg ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {}) : null,
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleBadge, {
+													role: adminMsg || !bunny.admins[msg.authorId] ? info.role : null,
+													admin: adminMsg
+												}),
 												isBanned ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 													className: "tag ban",
 													children: "Banned"
@@ -3709,10 +3883,23 @@ function DirectView({ bunny, openMenu }) {
 		peer,
 		me
 	]);
+	const mountedAt = (0, import_react.useRef)(Date.now());
+	const lastPeer = (0, import_react.useRef)(null);
 	(0, import_react.useEffect)(() => {
 		const el = listRef.current;
-		if (el) el.scrollTop = el.scrollHeight;
-	}, [thread.length, peer]);
+		if (!el) return;
+		if (lastPeer.current !== peer || bunny.settings.reduceMotion) {
+			el.scrollTop = el.scrollHeight;
+			lastPeer.current = peer;
+		} else el.scrollTo({
+			top: el.scrollHeight,
+			behavior: "smooth"
+		});
+	}, [
+		thread.length,
+		peer,
+		bunny.settings.reduceMotion
+	]);
 	(0, import_react.useEffect)(() => {
 		if (peer) inputRef.current?.focus();
 	}, [peer]);
@@ -3812,6 +3999,7 @@ function DirectView({ bunny, openMenu }) {
 							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
 									avatar: p.avatar,
+									anim: p.anim,
 									color: p.color,
 									label: p.name,
 									status: p.online ? p.status : void 0
@@ -3860,6 +4048,7 @@ function DirectView({ bunny, openMenu }) {
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
 							avatar: info.avatar,
+							anim: info.anim,
 							color: info.color,
 							label: info.name,
 							status: info.online ? info.status : void 0,
@@ -3873,7 +4062,10 @@ function DirectView({ bunny, openMenu }) {
 									alignItems: "center",
 									gap: "0.4rem"
 								},
-								children: [info.name, bunny.admins[peer] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {}) : null]
+								children: [info.name, /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleBadge, {
+									role: info.role,
+									admin: !!bunny.admins[peer]
+								})]
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: info.online ? info.status === "dnd" ? "Do not disturb" : info.status === "idle" ? "Idle" : "Online" : "Offline · they'll get it next time" })]
 						}),
 						!bunny.friends[peer] && !bunny.outgoing[peer] && !bunny.requests[peer] ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
@@ -3925,7 +4117,7 @@ function DirectView({ bunny, openMenu }) {
 									className: "day",
 									children: dayLabel(d.at)
 								}) : gap ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bubble-gap" }) : null, /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: `bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""}`,
+									className: `bubble ${mine ? "mine" : ""} ${d.media && !d.text ? "media-only" : ""} ${d.at > mountedAt.current - 1500 ? "enter" : ""}`,
 									children: [
 										d.media ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MediaGrid, {
 											media: d.media,
@@ -4149,6 +4341,7 @@ function Overview({ bunny }) {
 				})
 			]
 		}),
+		/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MyTag, { bunny }),
 		/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 			className: "group-title",
 			children: "Broadcast"
@@ -4454,6 +4647,7 @@ function Members({ bunny, openMenu }) {
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
 							avatar: p.avatar,
+							anim: p.anim,
 							color: p.color,
 							label: p.name,
 							status: p.online ? p.status : void 0,
@@ -4470,7 +4664,14 @@ function Members({ bunny, openMenu }) {
 								},
 								children: [
 									p.name,
-									bunny.admins[p.id] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {}) : null,
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleBadge, {
+										role: p.role,
+										admin: !!bunny.admins[p.id]
+									}),
+									bunny.perks[p.id]?.animated && !bunny.admins[p.id] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "pill-kind",
+										children: "Animated PFP"
+									}) : null,
 									banned ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 										className: "tag ban",
 										children: "Banned"
@@ -4683,10 +4884,25 @@ function Dms({ bunny }) {
 }
 function ServerLook({ bunny }) {
 	const [url, setUrl] = (0, import_react.useState)("");
-	const [busy, setBusy] = (0, import_react.useState)(false);
+	const [progress, setProgress] = (0, import_react.useState)(null);
+	const [drag, setDrag] = (0, import_react.useState)(false);
 	const [notice, setNotice] = (0, import_react.useState)(bunny.announce?.text || "");
+	const fileRef = (0, import_react.useRef)(null);
 	const wp = bunny.wallpaper;
-	const current = !wp || wp.mode === "default" ? "default" : wp.mode === "preset" ? wp.value : "image";
+	const current = !wp || wp.mode === "default" ? "default" : wp.mode === "preset" ? wp.value : "custom";
+	async function applyFile(file) {
+		if (!file || progress !== null) return;
+		try {
+			const prepared = await prepareFile(file);
+			setProgress(0);
+			const [ref] = await bunny.uploadMedia([prepared], false, (d, t) => setProgress(d / t));
+			await bunny.setGlobalWallpaper("media", void 0, ref);
+		} catch (e) {
+			bunny.say(e instanceof Error ? e.message : "That file can't be used");
+		} finally {
+			setProgress(null);
+		}
+	}
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
 		/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 			className: "group-title",
@@ -4696,6 +4912,47 @@ function ServerLook({ bunny }) {
 			className: "group",
 			children: [
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: `dropzone ${drag ? "over" : ""}`,
+					onDragOver: (e) => {
+						e.preventDefault();
+						setDrag(true);
+					},
+					onDragLeave: () => setDrag(false),
+					onDrop: (e) => {
+						e.preventDefault();
+						setDrag(false);
+						applyFile(e.dataTransfer.files[0]);
+					},
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CloudUpload, { size: 26 }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: progress !== null ? `Uploading ${Math.round(progress * 100)}%` : "Drop an image or video here" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "PNG, JPG, GIF, WebP or MP4 / WebM up to 8 MB. Videos loop silently." }),
+						progress !== null ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "tray-progress",
+							style: {
+								width: "100%",
+								maxWidth: "18rem"
+							},
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { style: { width: `${Math.round(progress * 100)}%` } })
+						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							className: "gbtn primary",
+							type: "button",
+							onClick: () => fileRef.current?.click(),
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Upload, { size: 15 }), " Choose file"]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							ref: fileRef,
+							type: "file",
+							accept: ACCEPT,
+							hidden: true,
+							onChange: (e) => {
+								applyFile(e.target.files?.[0]);
+								e.target.value = "";
+							}
+						})
+					]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "wall-grid",
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
@@ -4704,7 +4961,7 @@ function ServerLook({ bunny }) {
 							style: { backgroundImage: "url(/home.jpg)" },
 							"aria-pressed": current === "default",
 							onClick: () => void bunny.setGlobalWallpaper("default"),
-							children: "Fjord (default)"
+							children: "Fjord"
 						}),
 						Object.entries(PRESETS).map(([key, p]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 							type: "button",
@@ -4714,12 +4971,10 @@ function ServerLook({ bunny }) {
 							onClick: () => void bunny.setGlobalWallpaper("preset", key),
 							children: p.label
 						}, key)),
-						wp?.mode === "image" && wp.value ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-							type: "button",
-							className: "wall",
-							style: { backgroundImage: `url("${wp.value}")` },
+						current === "custom" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "wall custom",
 							"aria-pressed": true,
-							children: "Custom"
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Image$1, { size: 16 }), " Custom"]
 						}) : null
 					]
 				}),
@@ -4727,48 +4982,28 @@ function ServerLook({ bunny }) {
 					className: "opt stack",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 						className: "label",
-						children: "Use any image"
+						children: "Or use an image link"
 					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "row",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-								className: "input",
-								style: {
-									flex: 1,
-									minWidth: "12rem"
-								},
-								value: url,
-								placeholder: "https://…/photo.jpg",
-								onChange: (e) => setUrl(e.target.value)
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								className: "gbtn primary",
-								type: "button",
-								disabled: !url.trim(),
-								onClick: () => {
-									bunny.setGlobalWallpaper("image", url.trim());
-									setUrl("");
-								},
-								children: "Apply link"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
-								className: "gbtn file",
-								children: [busy ? "Preparing…" : "Upload image", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-									type: "file",
-									accept: "image/*",
-									disabled: busy,
-									onChange: async (e) => {
-										const file = e.target.files?.[0];
-										if (!file) return;
-										setBusy(true);
-										const data = await shrinkWallpaper(file);
-										setBusy(false);
-										if (data) bunny.setGlobalWallpaper("image", data);
-										else bunny.say("That image is too large to share");
-									}
-								})]
-							})
-						]
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							className: "input",
+							style: {
+								flex: 1,
+								minWidth: "12rem"
+							},
+							value: url,
+							placeholder: "https://…/photo.jpg",
+							onChange: (e) => setUrl(e.target.value)
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							className: "gbtn",
+							type: "button",
+							disabled: !url.trim(),
+							onClick: () => {
+								bunny.setGlobalWallpaper("image", url.trim());
+								setUrl("");
+							},
+							children: "Apply"
+						})]
 					})]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -4796,10 +5031,7 @@ function ServerLook({ bunny }) {
 				className: "opt stack",
 				children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						style: {
-							fontSize: "0.8rem",
-							color: "var(--color-faint)"
-						},
+						className: "hint",
 						children: "Pinned under the top bar for everyone."
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
@@ -4816,7 +5048,7 @@ function ServerLook({ bunny }) {
 							type: "button",
 							disabled: !notice.trim(),
 							onClick: () => void bunny.setAnnouncement(notice),
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Megaphone, { size: 15 }), " Post announcement"]
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Megaphone, { size: 15 }), " Post"]
 						}), bunny.announce?.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 							className: "gbtn",
 							type: "button",
@@ -4831,6 +5063,77 @@ function ServerLook({ bunny }) {
 			})
 		})
 	] });
+}
+function MyTag({ bunny }) {
+	const me = bunny.identity?.id || "";
+	const mine = bunny.perks[me]?.role;
+	const [text, setText] = (0, import_react.useState)(mine?.text || "Admin");
+	const [color, setColor] = (0, import_react.useState)(mine?.color || "#ffc35c");
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+		className: "group-title",
+		children: "Your tag"
+	}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "group",
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "opt",
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "txt",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Shown next to your name" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Any text and any color. Everyone sees it." })]
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleBadge, {
+				role: text.trim() ? {
+					text: text.trim(),
+					color
+				} : null,
+				admin: true
+			})]
+		}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "opt",
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+					className: "input",
+					style: {
+						flex: 1,
+						minWidth: "8rem"
+					},
+					value: text,
+					maxLength: 18,
+					placeholder: "Owner",
+					onChange: (e) => setText(e.target.value),
+					"aria-label": "Tag text"
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+					className: "color-pick",
+					title: "Tag color",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "color",
+						value: color,
+						onChange: (e) => setColor(e.target.value),
+						"aria-label": "Tag color"
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { background: color } })]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					className: "gbtn primary",
+					type: "button",
+					disabled: !text.trim(),
+					onClick: () => void bunny.setPerk(me, bunny.profile.name, true, {
+						text,
+						color
+					}),
+					children: "Save"
+				}),
+				mine ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					className: "gbtn",
+					type: "button",
+					onClick: () => {
+						setText("Admin");
+						setColor("#ffc35c");
+						bunny.setPerk(me, bunny.profile.name, true, null);
+					},
+					children: "Reset"
+				}) : null
+			]
+		})]
+	})] });
 }
 var NAV = [
 	{
@@ -4923,6 +5226,9 @@ function ProfileSection({ bunny }) {
 	const [bio, setBio] = (0, import_react.useState)(bunny.profile.bio);
 	const [avatar, setAvatar] = (0, import_react.useState)(bunny.profile.avatar);
 	const [color, setColor] = (0, import_react.useState)(bunny.profile.color);
+	const me = bunny.identity?.id || "";
+	const animAllowed = bunny.canAnimate(me) || !!bunny.session;
+	const [animBusy, setAnimBusy] = (0, import_react.useState)(null);
 	const dirty = name !== bunny.profile.name || bio !== bunny.profile.bio || avatar !== bunny.profile.avatar || color !== bunny.profile.color;
 	const valid = name.trim().length >= 2;
 	const set = (patch) => bunny.updateSettings(patch);
@@ -4938,6 +5244,7 @@ function ProfileSection({ bunny }) {
 				className: "profile-card",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
 					avatar,
+					anim: animAllowed ? bunny.profile.anim : void 0,
 					color,
 					label: "Preview",
 					status: bunny.settings.status
@@ -4988,6 +5295,54 @@ function ProfileSection({ bunny }) {
 				})]
 			})
 		}),
+		animAllowed ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			className: "group",
+			children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "opt",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "txt",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Animated profile picture ✨" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: bunny.profile.anim ? "Your animated picture is live." : "GIF, WebP, MP4 or WebM up to 2 MB. Shown instead of your photo." })]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+						className: `gbtn sm file ${animBusy !== null ? "busy" : ""}`,
+						children: [animBusy !== null ? `${Math.round(animBusy * 100)}%` : bunny.profile.anim ? "Replace" : "Upload", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "file",
+							accept: "image/gif,image/webp,video/mp4,video/webm",
+							disabled: animBusy !== null,
+							onChange: async (e) => {
+								const file = e.target.files?.[0];
+								e.target.value = "";
+								if (!file) return;
+								try {
+									const p = await prepareAnimated(file);
+									setAnimBusy(0);
+									const [ref] = await bunny.uploadMedia([p], false, (d, t) => setAnimBusy(d / t));
+									bunny.saveProfile({
+										...bunny.profile,
+										anim: ref
+									});
+									bunny.say("Animated picture updated");
+								} catch (err) {
+									bunny.say(err instanceof Error ? err.message : "Upload failed");
+								} finally {
+									setAnimBusy(null);
+								}
+							}
+						})]
+					}),
+					bunny.profile.anim ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						className: "gbtn sm",
+						type: "button",
+						onClick: () => bunny.saveProfile({
+							...bunny.profile,
+							anim: void 0
+						}),
+						children: "Remove"
+					}) : null
+				]
+			})
+		}) : null,
 		/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			className: "group",
 			children: [
@@ -5064,7 +5419,8 @@ function ProfileSection({ bunny }) {
 						name,
 						bio,
 						avatar,
-						color
+						color,
+						anim: bunny.profile.anim
 					})) bunny.say("Profile saved");
 				},
 				children: "Save changes"
@@ -5210,9 +5566,9 @@ function AppearanceSection({ bunny }) {
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 						className: "label",
 						children: "Accent"
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "swatches",
-						children: Object.entries(ACCENTS).map(([key, a]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						children: [Object.entries(ACCENTS).map(([key, a]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 							type: "button",
 							className: "swatch",
 							title: a.label,
@@ -5220,7 +5576,18 @@ function AppearanceSection({ bunny }) {
 							"aria-label": a.label,
 							"aria-pressed": s.accent === key,
 							onClick: () => set({ accent: key })
-						}, key))
+						}, key)), bunny.session ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+							className: "swatch custom-swatch",
+							title: "Any color (admin)",
+							"aria-pressed": s.accent.startsWith("#"),
+							style: { background: s.accent.startsWith("#") ? s.accent : void 0 },
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "color",
+								value: s.accent.startsWith("#") ? s.accent : "#ff6b9a",
+								onChange: (e) => set({ accent: e.target.value }),
+								"aria-label": "Custom accent color"
+							}), s.accent.startsWith("#") ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "+" })]
+						}) : null]
 					})]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Opt, {
@@ -5268,6 +5635,7 @@ function AppearanceSection({ bunny }) {
 						]
 					})
 				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MyWallpaper, { bunny }),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "opt stack",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
@@ -5586,8 +5954,62 @@ function AccountSection({ bunny }) {
 		})
 	] });
 }
+function MyWallpaper({ bunny }) {
+	const [mine, setMine] = (0, import_react.useState)(() => {
+		try {
+			return localStorage.getItem("bunny_mywall");
+		} catch {
+			return null;
+		}
+	});
+	const apply = (value) => {
+		try {
+			if (value) localStorage.setItem("bunny_mywall", value);
+			else localStorage.removeItem("bunny_mywall");
+		} catch {
+			bunny.say("Your browser couldn't save that image");
+			return;
+		}
+		setMine(value);
+		window.dispatchEvent(new Event("bunny-mywall"));
+	};
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "opt",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "txt",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "My wallpaper" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: mine ? "Only you see this. Admin wallpaper changes are hidden while it's on." : "Use your own picture instead of the server's wallpaper." })]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+				className: "gbtn sm file",
+				children: [mine ? "Change" : "Upload", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+					type: "file",
+					accept: "image/*",
+					onChange: async (e) => {
+						const file = e.target.files?.[0];
+						e.target.value = "";
+						if (!file) return;
+						const data = await shrinkWallpaper(file);
+						if (data) apply(data);
+						else bunny.say("That image is too large");
+					}
+				})]
+			}),
+			mine ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+				className: "gbtn sm",
+				type: "button",
+				onClick: () => apply(null),
+				children: "Use server's"
+			}) : null
+		]
+	});
+}
 function UserMenu({ bunny, target, onClose, onMention }) {
 	const [mode, setMode] = (0, import_react.useState)("main");
+	const perk = bunny.perks[target.id];
+	const [animated, setAnimated] = (0, import_react.useState)(!!perk?.animated);
+	const [roleText, setRoleText] = (0, import_react.useState)(perk?.role?.text || "");
+	const [roleColor, setRoleColor] = (0, import_react.useState)(perk?.role?.color || "#a78bfa");
 	const [reason, setReason] = (0, import_react.useState)("");
 	const info = bunny.lookup(target.id);
 	const self = target.id === bunny.identity?.id;
@@ -5606,6 +6028,7 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 			className: "menu-head",
 			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
 				avatar: info.avatar,
+				anim: info.anim,
 				color: info.color,
 				label: info.name,
 				status: info.online ? info.status : void 0
@@ -5613,7 +6036,10 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 				style: { minWidth: 0 },
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
 					info.name,
-					isAdmin ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {}) : null,
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleBadge, {
+						role: info.role,
+						admin: isAdmin
+					}),
 					banned ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 						className: "tag ban",
 						children: "Banned"
@@ -5708,6 +6134,12 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 			canMod ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "menu-sep" }),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+					className: "menu-item",
+					type: "button",
+					onClick: () => setMode("perks"),
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Sparkles, { size: 17 }), " Perks & role"]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 					className: "menu-item warn",
 					type: "button",
 					onClick: () => setMode("warn"),
@@ -5734,7 +6166,88 @@ function UserMenu({ bunny, target, onClose, onMention }) {
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ban, { size: 17 }), " Ban from server"]
 				})
 			] }) : null
-		] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+		] }) : mode === "perks" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+			onSubmit: (e) => {
+				e.preventDefault();
+				bunny.setPerk(target.id, info.name, animated, roleText.trim() ? {
+					text: roleText.trim(),
+					color: roleColor
+				} : null);
+				onClose();
+			},
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+					className: "label",
+					style: {
+						display: "flex",
+						alignItems: "center",
+						gap: "0.35rem"
+					},
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Sparkles, { size: 13 }),
+						" Perks for ",
+						info.name
+					]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+					className: "perk-row",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Animated profile picture" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, {
+						label: "Animated profile picture",
+						on: animated,
+						onChange: setAnimated
+					})]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "label",
+					style: { marginTop: "0.2rem" },
+					children: "Role tag"
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "row",
+					style: { flexWrap: "nowrap" },
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						className: "input",
+						value: roleText,
+						maxLength: 18,
+						placeholder: "VIP, Mod, Artist…",
+						onChange: (e) => setRoleText(e.target.value),
+						"aria-label": "Role tag text"
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+						className: "color-pick",
+						title: "Role color",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "color",
+							value: roleColor,
+							onChange: (e) => setRoleColor(e.target.value),
+							"aria-label": "Role color"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { background: roleColor } })]
+					})]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "row",
+					style: { justifyContent: "space-between" },
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleBadge, {
+						role: roleText.trim() ? {
+							text: roleText.trim(),
+							color: roleColor
+						} : null,
+						admin: false
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "row",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							className: "gbtn sm",
+							type: "button",
+							onClick: () => setMode("main"),
+							children: "Back"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							className: "gbtn sm primary",
+							type: "submit",
+							children: "Save"
+						})]
+					})]
+				})
+			]
+		}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
 			onSubmit: (e) => {
 				e.preventDefault();
 				if (mode === "warn") {
@@ -5873,11 +6386,63 @@ function Room({ mode = "user" }) {
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
 	}, [bunny]);
-	const accent = ACCENTS[s.accent] || ACCENTS.teal;
+	const accent = /^#[0-9a-fA-F]{6}$/.test(s.accent) ? {
+		color: s.accent,
+		ink: inkFor(s.accent)
+	} : ACCENTS[s.accent] || ACCENTS.teal;
 	const wp = bunny.wallpaper;
+	const [myWall, setMyWall] = (0, import_react.useState)(null);
+	(0, import_react.useEffect)(() => {
+		const read = () => {
+			try {
+				setMyWall(localStorage.getItem("bunny_mywall"));
+			} catch {
+				setMyWall(null);
+			}
+		};
+		read();
+		window.addEventListener("bunny-mywall", read);
+		return () => window.removeEventListener("bunny-mywall", read);
+	}, []);
+	const [wallMedia, setWallMedia] = (0, import_react.useState)(null);
+	const wallRef = wp?.mode === "media" ? wp.media : void 0;
+	(0, import_react.useEffect)(() => {
+		setWallMedia(null);
+		if (!wallRef) return;
+		let alive = true;
+		bunny.loadMedia(wallRef).then((url) => alive && setWallMedia({
+			url,
+			kind: wallRef.kind
+		}), () => void 0);
+		return () => {
+			alive = false;
+		};
+	}, [wallRef, bunny.loadMedia]);
 	let wallStyle;
-	if (wp?.mode === "preset" && wp.value && PRESETS[wp.value]) wallStyle = { background: PRESETS[wp.value].css };
+	if (myWall && safeWallpaperUrl(myWall)) wallStyle = { backgroundImage: `url("${myWall}")` };
+	else if (wp?.mode === "preset" && wp.value && PRESETS[wp.value]) wallStyle = { background: PRESETS[wp.value].css };
 	else if (wp?.mode === "image" && safeWallpaperUrl(wp.value)) wallStyle = { backgroundImage: `url("${wp.value}")` };
+	else if (wp?.mode === "media" && wallMedia?.kind === "image") wallStyle = { backgroundImage: `url("${wallMedia.url}")` };
+	const wallVideo = !myWall && wp?.mode === "media" && wallMedia?.kind === "video" ? wallMedia.url : null;
+	const wallKey = myWall ? "mine" : wp ? `${wp.mode}:${wp.at}:${wallMedia ? 1 : 0}` : "default";
+	const dockRef = (0, import_react.useRef)(null);
+	const [pill, setPill] = (0, import_react.useState)(null);
+	(0, import_react.useLayoutEffect)(() => {
+		const measure = () => {
+			const el = dockRef.current?.querySelector(".seg.active");
+			setPill(el ? {
+				left: el.offsetLeft,
+				width: el.offsetWidth
+			} : null);
+		};
+		measure();
+		window.addEventListener("resize", measure);
+		return () => window.removeEventListener("resize", measure);
+	}, [
+		bunny.view.tab,
+		bunny.adminMode,
+		bunny.session
+	]);
 	const people = bunny.people.filter((p) => !bunny.blocked.includes(p.id) && (bunny.adminMode || !bunny.isBanned(p.id)));
 	const tab = bunny.view.tab;
 	const mention = (name) => {
@@ -5904,375 +6469,397 @@ function Room({ mode = "user" }) {
 			"--dim": String(s.dim / 100),
 			"--color-accent": accent.color
 		},
-		children: [
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LensFilter, {}),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "wallpaper",
-				style: wallStyle
-			}),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "shell",
-				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
-						className: "topbar",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "brand lg",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-									className: "mark",
-									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StarMark, { className: "size-5" })
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h1", { children: ["Bunny RTC", mode === "admin" ? " · Admin" : ""] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { className: `live-dot ${bunny.online ? "on" : ""}` }), bunny.online ? `${bunny.people.length} online` : bunny.status] })] })]
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("nav", {
-								className: "dockbar lg lg-lens",
-								"aria-label": "Sections",
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-										type: "button",
-										className: `seg ${tab === "server" ? "active" : ""}`,
-										"aria-current": tab === "server",
-										onClick: () => bunny.setView({
-											tab: "server",
-											peer: null
-										}),
-										children: [
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Hash, { size: 16 }),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "seg-label",
-												children: "Server"
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LensFilter, {}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(MediaLoader.Provider, {
+			value: bunny.loadMedia,
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "wallpaper",
+					style: wallStyle,
+					children: wallVideo ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", {
+						className: "wallpaper-video",
+						src: wallVideo,
+						autoPlay: true,
+						muted: true,
+						loop: true,
+						playsInline: true
+					}) : null
+				}, wallKey),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "shell",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
+							className: "topbar",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "brand lg",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "mark",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StarMark, { className: "size-5" })
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h1", { children: ["Bunny RTC", mode === "admin" ? " · Admin" : ""] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { className: `live-dot ${bunny.online ? "on" : ""}` }), bunny.online ? `${bunny.people.length} online` : bunny.status] })] })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("nav", {
+									className: "dockbar lg lg-lens",
+									"aria-label": "Sections",
+									ref: dockRef,
+									children: [
+										pill ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "seg-pill",
+											style: {
+												transform: `translateX(${pill.left}px)`,
+												width: pill.width
+											},
+											"aria-hidden": true
+										}) : null,
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+											type: "button",
+											className: `seg ${tab === "server" ? "active" : ""}`,
+											"aria-current": tab === "server",
+											onClick: () => bunny.setView({
+												tab: "server",
+												peer: null
 											}),
-											bunny.serverUnread && tab !== "server" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "badge",
-												children: bunny.serverUnread > 99 ? "99+" : bunny.serverUnread
-											}) : null
-										]
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-										type: "button",
-										className: `seg ${tab === "direct" ? "active" : ""}`,
-										"aria-current": tab === "direct",
-										onClick: () => bunny.setView({
-											tab: "direct",
-											peer: tab === "direct" ? null : bunny.view.peer
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Hash, { size: 16 }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "seg-label",
+													children: "Server"
+												}),
+												bunny.serverUnread && tab !== "server" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "badge",
+													children: bunny.serverUnread > 99 ? "99+" : bunny.serverUnread
+												}) : null
+											]
 										}),
-										children: [
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)(AtSign, { size: 16 }),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "seg-label",
-												children: "Direct"
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+											type: "button",
+											className: `seg ${tab === "direct" ? "active" : ""}`,
+											"aria-current": tab === "direct",
+											onClick: () => bunny.setView({
+												tab: "direct",
+												peer: tab === "direct" ? null : bunny.view.peer
 											}),
-											bunny.directUnread ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "badge",
-												children: bunny.directUnread
-											}) : null
-										]
-									}),
-									bunny.adminMode && isAdmin ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-										type: "button",
-										className: `seg mod ${tab === "mod" ? "active" : ""}`,
-										"aria-current": tab === "mod",
-										onClick: () => bunny.setView({
-											tab: "mod",
-											peer: null
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)(AtSign, { size: 16 }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "seg-label",
+													children: "Direct"
+												}),
+												bunny.directUnread ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "badge",
+													children: bunny.directUnread
+												}) : null
+											]
 										}),
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShieldCheck, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "seg-label",
-											children: "Admin"
-										})]
-									}) : null
-								]
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "tools lg",
-								children: [
-									tab === "server" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-										className: `gbtn icon ${showSearch ? "on" : ""}`,
-										type: "button",
-										"aria-label": "Search messages",
-										"aria-pressed": showSearch,
-										onClick: () => setShowSearch((v) => !v),
-										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { size: 18 })
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-										className: `gbtn icon ${membersOpen ? "on" : ""}`,
-										type: "button",
-										"aria-label": "Members",
-										"aria-pressed": membersOpen,
-										onClick: () => setMembersOpen((v) => !v),
-										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Users, { size: 18 })
-									})] }) : null,
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-										className: "gbtn icon",
-										type: "button",
-										"aria-label": "Settings",
-										onClick: () => setSettingsOpen(true),
-										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Settings, { size: 18 })
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-										className: "gbtn icon",
-										type: "button",
-										"aria-label": "Your profile",
-										onClick: (e) => setMenu({
-											id: me,
-											x: e.clientX - 240,
-											y: e.clientY + 16
+										bunny.adminMode && isAdmin ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+											type: "button",
+											className: `seg mod ${tab === "mod" ? "active" : ""}`,
+											"aria-current": tab === "mod",
+											onClick: () => bunny.setView({
+												tab: "mod",
+												peer: null
+											}),
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShieldCheck, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "seg-label",
+												children: "Admin"
+											})]
+										}) : null
+									]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "tools lg",
+									children: [
+										tab === "server" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											className: `gbtn icon ${showSearch ? "on" : ""}`,
+											type: "button",
+											"aria-label": "Search messages",
+											"aria-pressed": showSearch,
+											onClick: () => setShowSearch((v) => !v),
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { size: 18 })
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											className: `gbtn icon ${membersOpen ? "on" : ""}`,
+											type: "button",
+											"aria-label": "Members",
+											"aria-pressed": membersOpen,
+											onClick: () => setMembersOpen((v) => !v),
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Users, { size: 18 })
+										})] }) : null,
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											className: "gbtn icon",
+											type: "button",
+											"aria-label": "Settings",
+											onClick: () => setSettingsOpen(true),
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Settings, { size: 18 })
 										}),
-										style: { padding: 0 },
-										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
-											avatar: bunny.profile.avatar,
-											color: bunny.profile.color,
-											label: bunny.profile.name || "You",
-											status: s.status,
-											size: "2.1rem"
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											className: "gbtn icon",
+											type: "button",
+											"aria-label": "Your profile",
+											onClick: (e) => setMenu({
+												id: me,
+												x: e.clientX - 240,
+												y: e.clientY + 16
+											}),
+											style: { padding: 0 },
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
+												avatar: bunny.profile.avatar,
+												anim: bunny.canAnimate(me) ? bunny.profile.anim : void 0,
+												color: bunny.profile.color,
+												label: bunny.profile.name || "You",
+												status: s.status,
+												size: "2.1rem"
+											})
 										})
-									})
-								]
+									]
+								})
+							]
+						}),
+						bunny.announce?.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "announce lg-soft",
+							role: "status",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Megaphone, { size: 16 }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: bunny.announce.text }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: bunny.announce.byName })
+							]
+						}) : null,
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
+							className: "body view-enter",
+							children: [
+								tab === "server" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ServerView, {
+									bunny,
+									showSearch,
+									openMenu: setMenu,
+									composerRef
+								}), membersOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", {
+									className: "side floating lg-panel",
+									"aria-label": "Members",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "side-head",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h2", { children: ["Online · ", people.length] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											className: "gbtn sm icon",
+											type: "button",
+											"aria-label": "Close members",
+											onClick: () => setMembersOpen(false),
+											style: {
+												background: "transparent",
+												boxShadow: "none"
+											},
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 15 })
+										})]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "people",
+										children: people.map((p, idx) => {
+											const admin = bunny.isAdminPerson(p.id);
+											return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+												type: "button",
+												className: "person",
+												style: { "--i": Math.min(idx, 12) },
+												onClick: (e) => setMenu({
+													id: p.id,
+													x: e.clientX - 20,
+													y: e.clientY + 8
+												}),
+												onContextMenu: (e) => {
+													e.preventDefault();
+													setMenu({
+														id: p.id,
+														x: e.clientX,
+														y: e.clientY
+													});
+												},
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
+													avatar: p.avatar,
+													anim: bunny.lookup(p.id).anim,
+													color: p.color,
+													label: p.name,
+													status: p.status || "online"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "meta",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [p.name, /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoleBadge, {
+														role: admin || !bunny.admins[p.id] ? bunny.roleOf(p.id) : null,
+														admin
+													})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: p.id === me ? "You" : p.bio || (bunny.friends[p.id] ? "Friend" : p.status === "dnd" ? "Do not disturb" : p.status === "idle" ? "Idle" : "Online") })]
+												})]
+											}, p.id);
+										})
+									})]
+								}) : null] }) : null,
+								tab === "direct" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DirectView, {
+									bunny,
+									openMenu: setMenu
+								}) : null,
+								tab === "mod" && bunny.adminMode && isAdmin ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModView, {
+									bunny,
+									openMenu: setMenu
+								}) : null
+							]
+						}, tab)
+					]
+				}),
+				menu ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(UserMenu, {
+					bunny,
+					target: menu,
+					onClose: closeMenu,
+					onMention: mention
+				}) : null,
+				settingsOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SettingsSheet, {
+					bunny,
+					onClose: () => setSettingsOpen(false)
+				}) : null,
+				bunny.toast ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "toast lg",
+					children: bunny.toast
+				}) : null,
+				flash?.style === "m" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "flash-m",
+					role: "alert",
+					"aria-live": "assertive",
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flash-card lg",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+							className: "flash-from",
+							children: ["Message from ", flash.byName]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: flash.text })]
+					})
+				}, flash.id) : null,
+				flash?.style === "h" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flash-h lg",
+					role: "status",
+					"aria-live": "polite",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Megaphone, { size: 15 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("b", { children: [flash.byName, ":"] }),
+						" ",
+						flash.text
+					] })]
+				}, flash.id) : null,
+				bunny.kicked ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "backdrop",
+					style: {
+						background: "rgba(2,6,10,0.55)",
+						zIndex: 60
+					},
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "modal lg",
+						role: "alertdialog",
+						"aria-labelledby": "kick-title",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "gate-icon",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { size: 24 })
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+								id: "kick-title",
+								children: "You were kicked"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								style: { margin: "0.5rem 0 0.8rem" },
+								children: [bunny.kicked.byName, " removed you from the room."]
+							}),
+							bunny.kicked.reason ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "callout",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+									"“",
+									bunny.kicked.reason,
+									"”"
+								] })]
+							}) : null,
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "row",
+								style: {
+									justifyContent: "flex-end",
+									marginTop: "0.9rem"
+								},
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									className: "gbtn primary",
+									type: "button",
+									onClick: () => window.location.reload(),
+									children: "Rejoin"
+								})
 							})
 						]
-					}),
-					bunny.announce?.text ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "announce lg-soft",
-						role: "status",
+					})
+				}) : null,
+				bunny.warnings[0] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "backdrop",
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "modal lg",
+						role: "alertdialog",
+						"aria-labelledby": "warn-title",
 						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Megaphone, { size: 16 }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: bunny.announce.text }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: bunny.announce.byName })
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "gate-icon",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { size: 24 })
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+								id: "warn-title",
+								children: "You've received a warning"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								style: { margin: "0.5rem 0 0.8rem" },
+								children: "An admin flagged something you did in Bunny RTC."
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "callout",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+									"“",
+									bunny.warnings[0].reason,
+									"”"
+								] })]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								style: { fontSize: "0.78rem" },
+								children: "Repeated problems can lead to a ban."
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "row",
+								style: {
+									justifyContent: "flex-end",
+									marginTop: "0.9rem"
+								},
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									className: "gbtn primary",
+									type: "button",
+									onClick: () => bunny.ackWarning(bunny.warnings[0].id),
+									children: "I understand"
+								})
+							})
 						]
-					}) : null,
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
-						className: "body",
+					})
+				}) : null,
+				banned && !bunny.adminMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "backdrop",
+					style: { background: "rgba(2,6,10,0.55)" },
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "modal lg",
+						role: "alertdialog",
+						"aria-labelledby": "ban-title",
 						children: [
-							tab === "server" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ServerView, {
-								bunny,
-								showSearch,
-								openMenu: setMenu,
-								composerRef
-							}), membersOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", {
-								className: "side floating lg-panel",
-								"aria-label": "Members",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "side-head",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h2", { children: ["Online · ", people.length] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-										className: "gbtn sm icon",
-										type: "button",
-										"aria-label": "Close members",
-										onClick: () => setMembersOpen(false),
-										style: {
-											background: "transparent",
-											boxShadow: "none"
-										},
-										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { size: 15 })
-									})]
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-									className: "people",
-									children: people.map((p) => {
-										const admin = bunny.isAdminPerson(p.id);
-										return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-											type: "button",
-											className: "person",
-											onClick: (e) => setMenu({
-												id: p.id,
-												x: e.clientX - 20,
-												y: e.clientY + 8
-											}),
-											onContextMenu: (e) => {
-												e.preventDefault();
-												setMenu({
-													id: p.id,
-													x: e.clientX,
-													y: e.clientY
-												});
-											},
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Face, {
-												avatar: p.avatar,
-												color: p.color,
-												label: p.name,
-												status: p.status || "online"
-											}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-												className: "meta",
-												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
-													style: { color: admin ? "#ffe08a" : void 0 },
-													children: [p.name, admin ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AdminTag, {}) : null]
-												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: p.id === me ? "You" : p.bio || (bunny.friends[p.id] ? "Friend" : p.status === "dnd" ? "Do not disturb" : p.status === "idle" ? "Idle" : "Online") })]
-											})]
-										}, p.id);
-									})
-								})]
-							}) : null] }) : null,
-							tab === "direct" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DirectView, {
-								bunny,
-								openMenu: setMenu
-							}) : null,
-							tab === "mod" && bunny.adminMode && isAdmin ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModView, {
-								bunny,
-								openMenu: setMenu
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "gate-icon",
+								style: { color: "#ff8b8b" },
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ban, { size: 24 })
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+								id: "ban-title",
+								children: "You've been banned"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								style: { margin: "0.5rem 0 0.8rem" },
+								children: "An admin removed you from this server. You can't send messages or DMs."
+							}),
+							bunny.bans[me]?.reason ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "callout red",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ban, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+									"Reason: “",
+									bunny.bans[me].reason,
+									"”"
+								] })]
 							}) : null
 						]
 					})
-				]
-			}),
-			menu ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(UserMenu, {
-				bunny,
-				target: menu,
-				onClose: closeMenu,
-				onMention: mention
-			}) : null,
-			settingsOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SettingsSheet, {
-				bunny,
-				onClose: () => setSettingsOpen(false)
-			}) : null,
-			bunny.toast ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "toast lg",
-				children: bunny.toast
-			}) : null,
-			flash?.style === "m" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "flash-m",
-				role: "alert",
-				"aria-live": "assertive",
-				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "flash-card lg",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-						className: "flash-from",
-						children: ["Message from ", flash.byName]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: flash.text })]
-				})
-			}, flash.id) : null,
-			flash?.style === "h" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "flash-h lg",
-				role: "status",
-				"aria-live": "polite",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Megaphone, { size: 15 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("b", { children: [flash.byName, ":"] }),
-					" ",
-					flash.text
-				] })]
-			}, flash.id) : null,
-			bunny.kicked ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "backdrop",
-				style: {
-					background: "rgba(2,6,10,0.55)",
-					zIndex: 60
-				},
-				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "modal lg",
-					role: "alertdialog",
-					"aria-labelledby": "kick-title",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "gate-icon",
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { size: 24 })
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-							id: "kick-title",
-							children: "You were kicked"
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-							style: { margin: "0.5rem 0 0.8rem" },
-							children: [bunny.kicked.byName, " removed you from the room."]
-						}),
-						bunny.kicked.reason ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "callout",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-								"“",
-								bunny.kicked.reason,
-								"”"
-							] })]
-						}) : null,
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "row",
-							style: {
-								justifyContent: "flex-end",
-								marginTop: "0.9rem"
-							},
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								className: "gbtn primary",
-								type: "button",
-								onClick: () => window.location.reload(),
-								children: "Rejoin"
-							})
-						})
-					]
-				})
-			}) : null,
-			bunny.warnings[0] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "backdrop",
-				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "modal lg",
-					role: "alertdialog",
-					"aria-labelledby": "warn-title",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "gate-icon",
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { size: 24 })
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-							id: "warn-title",
-							children: "You've received a warning"
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-							style: { margin: "0.5rem 0 0.8rem" },
-							children: "An admin flagged something you did in Bunny RTC."
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "callout",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-								"“",
-								bunny.warnings[0].reason,
-								"”"
-							] })]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-							style: { fontSize: "0.78rem" },
-							children: "Repeated problems can lead to a ban."
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "row",
-							style: {
-								justifyContent: "flex-end",
-								marginTop: "0.9rem"
-							},
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								className: "gbtn primary",
-								type: "button",
-								onClick: () => bunny.ackWarning(bunny.warnings[0].id),
-								children: "I understand"
-							})
-						})
-					]
-				})
-			}) : null,
-			banned && !bunny.adminMode ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "backdrop",
-				style: { background: "rgba(2,6,10,0.55)" },
-				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "modal lg",
-					role: "alertdialog",
-					"aria-labelledby": "ban-title",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "gate-icon",
-							style: { color: "#ff8b8b" },
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ban, { size: 24 })
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-							id: "ban-title",
-							children: "You've been banned"
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-							style: { margin: "0.5rem 0 0.8rem" },
-							children: "An admin removed you from this server. You can't send messages or DMs."
-						}),
-						bunny.bans[me]?.reason ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "callout red",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ban, { size: 16 }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-								"Reason: “",
-								bunny.bans[me].reason,
-								"”"
-							] })]
-						}) : null
-					]
-				})
-			}) : null
-		]
+				}) : null
+			]
+		})]
 	});
 }
 //#endregion
